@@ -1,0 +1,13 @@
+base: configs/train/base.yaml
+data:
+  img_size: 384
+  batch_size: 32
+model:
+  backbone: resnet50.a1_in1k
+  drop_path_rate: 0.05
+train:
+  epochs: 10
+  warmup_epochs: 1
+  accum_steps: 1
+optim:
+  lr_warmup_epochs: 1

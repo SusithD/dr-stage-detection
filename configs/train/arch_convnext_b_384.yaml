@@ -1,0 +1,10 @@
+base: configs/train/base.yaml
+data:
+  img_size: 384
+  batch_size: 16
+train:
+  epochs: 10
+  warmup_epochs: 1
+  accum_steps: 2
+optim:
+  lr_warmup_epochs: 1

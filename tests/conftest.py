@@ -74,3 +74,49 @@ def tiny_manifest(tmp_path: Path) -> dict:
         "exact_pair": ("img00", "dup_exact"),
         "near_pair": ("img01", "dup_near"),
     }
+
+
+@pytest.fixture
+def tiny_split(tmp_path: Path) -> dict:
+    """Create 30 synthetic 64px cached images covering all 5 labels.
+
+    Writes cache in <tmp>/processed/images/synth/none/64/ and split CSV.
+    Returns dict with cache_root, split_csv, preprocess_cfg.
+    """
+    cache_root = tmp_path / "processed" / "images" / "synth" / "none" / "64"
+    cache_root.mkdir(parents=True, exist_ok=True)
+
+    split_rows = []
+    for i in range(30):
+        label = i % 5
+        image_id = f"synth_{i:03d}"
+
+        img = make_fundus(64, 64, seed=i)
+        img_path = cache_root / f"{image_id}.png"
+        cv2.imwrite(str(img_path), cv2.cvtColor(img, cv2.COLOR_RGB2BGR))
+
+        split_num = (i // 5) % 3
+        if split_num == 0:
+            split = "train"
+        elif split_num == 1:
+            split = "val"
+        else:
+            split = "test"
+
+        split_rows.append({"image_id": image_id, "label": label, "split": split})
+
+    split_csv = tmp_path / "split.csv"
+    pd.DataFrame(split_rows).to_csv(split_csv, index=False)
+
+    preprocess_cfg = {
+        "circle_crop": {"threshold": 10, "min_radius_frac": 0.25},
+        "ben_graham": {"sigma_frac": 0.17, "alpha": 4, "beta": -4, "gamma": 128},
+        "clahe_l": {"clip_limit": 2.0, "tile_grid": 8},
+    }
+
+    return {
+        "cache_root": cache_root,
+        "split_csv": split_csv,
+        "preprocess_cfg": preprocess_cfg,
+        "img_size": 64,
+    }

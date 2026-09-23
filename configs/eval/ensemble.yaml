@@ -1,0 +1,19 @@
+out_dir: runs/eval/ensemble
+device: auto
+processed_root: data/processed
+data_config: configs/data.yaml
+models:
+  - {name: convnext_b_512, checkpoint: runs/final_convnext_b_512}
+  - {name: effnet_b5_456, checkpoint: runs/final_effnet_b5_456}
+ensembles:
+  - {name: convnext_effnet, members: [convnext_b_512, effnet_b5_456]}
+datasets:
+  - {name: ddr_test, csv: data/processed/splits/ddr_split.csv, split: test, dataset: ddr}
+  - {name: aptos_ext, csv: data/processed/splits/aptos_test.csv, split: null, dataset: aptos}
+tta: true
+also_without_tta: false
+batch_size: 16
+num_workers: 6
+topk_errors: 20
+training_curves: false
+limit_batches: 0

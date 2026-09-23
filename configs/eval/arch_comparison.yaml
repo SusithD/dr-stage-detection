@@ -1,0 +1,18 @@
+out_dir: runs/eval/arch_comparison
+device: auto
+processed_root: data/processed
+data_config: configs/data.yaml
+models:
+  - {name: convnext_b_384, checkpoint: runs/arch_convnext_b_384}
+  - {name: effnet_b5_384, checkpoint: runs/arch_effnet_b5_384}
+  - {name: resnet50_384, checkpoint: runs/arch_resnet50_384}
+  - {name: effnet_b0_384, checkpoint: runs/arch_effnet_b0_384}
+datasets:
+  - {name: ddr_test, csv: data/processed/splits/ddr_split.csv, split: test, dataset: ddr}
+tta: true
+also_without_tta: false
+batch_size: 16
+num_workers: 6
+topk_errors: 20
+training_curves: false
+limit_batches: 0

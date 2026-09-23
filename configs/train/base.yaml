@@ -1,0 +1,66 @@
+exp_name: base
+seed: 42
+device: auto
+runs_root: runs
+data:
+  config: configs/data.yaml
+  processed_root: data/processed
+  dataset: ddr
+  split_csv: data/processed/splits/ddr_split.csv
+  method: ben_graham
+  cache_size: 512
+  img_size: 512
+  cache_format: png
+  batch_size: 8
+  eval_batch_size: 16
+  num_workers: 6
+  aug:
+    rotate_limit: 180
+    rotate_p: 0.7
+    rrc_scale: [0.85, 1.0]
+    brightness: 0.2
+    contrast: 0.2
+    hue: 5
+    sat: 10
+    color_p: 0.5
+model:
+  backbone: convnext_base.fb_in22k_ft_in1k_384
+  pretrained: true
+  head: corn
+  num_classes: 5
+  dropout: 0.2
+  drop_path_rate: 0.2
+  channels_last: true
+imbalance:
+  class_weight_power: 0.5
+  sampler:
+    enabled: false
+    power: 0.5
+  weights_with_sampler: false
+  label_smoothing: 0.0
+train:
+  epochs: 25
+  warmup_epochs: 1
+  accum_steps: 4
+  clip_grad_norm: 1.0
+  freeze_bn_stats_stage1: true
+  limit_train_batches: 0
+  limit_val_batches: 0
+  log_every_steps: 50
+optim:
+  backbone_lr: 1.0e-4
+  head_lr_mult: 10
+  weight_decay: 0.05
+  betas: [0.9, 0.999]
+  eps: 1.0e-8
+  lr_warmup_epochs: 1
+  min_lr_ratio: 0.01
+amp:
+  dtype: auto
+ema:
+  enabled: true
+  decay: 0.9995
+early_stopping:
+  metric: val_qwk
+  patience: 6
+  min_delta: 0.002

@@ -1,0 +1,19 @@
+out_dir: runs/eval/ablations
+device: auto
+processed_root: data/processed
+data_config: configs/data.yaml
+models:
+  - {name: control, checkpoint: runs/arch_convnext_b_384}
+  - {name: head_ce, checkpoint: runs/abl_head_ce_384}
+  - {name: prep_clahe, checkpoint: runs/abl_prep_clahe_384}
+  - {name: prep_none, checkpoint: runs/abl_prep_none_384}
+  - {name: sampler, checkpoint: runs/abl_sampler_384}
+datasets:
+  - {name: ddr_test, csv: data/processed/splits/ddr_split.csv, split: test, dataset: ddr}
+tta: true
+also_without_tta: false
+batch_size: 16
+num_workers: 6
+topk_errors: 20
+training_curves: false
+limit_batches: 0

@@ -1,0 +1,14 @@
+base: configs/train/base.yaml
+data:
+  img_size: 456
+  batch_size: 8
+model:
+  backbone: tf_efficientnet_b5.ns_jft_in1k
+train:
+  epochs: 25
+  warmup_epochs: 2
+  accum_steps: 4
+optim:
+  lr_warmup_epochs: 1
+early_stopping:
+  patience: 6
