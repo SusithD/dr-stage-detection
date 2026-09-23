@@ -7,6 +7,6 @@ optim:
   backbone_lr: 5.0e-5
   lr_warmup_epochs: 1
 train:
-  epochs: 8
+  epochs: 10
   warmup_epochs: 1
   accum_steps: 2
