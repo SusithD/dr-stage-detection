@@ -10,8 +10,8 @@ datasets:
     id_has_extension: true
     image_ext: ""
   aptos:
-    csv: data/raw/aptos/train.csv
-    image_dir: data/raw/aptos/train_images
+    csv: data/raw/aptos/all_labels.csv
+    image_dir: data/raw/aptos/all_images
     id_col: id_code
     label_col: diagnosis
     id_has_extension: false
