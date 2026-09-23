@@ -2,7 +2,10 @@
 
 import argparse
 import json
+import logging
+import os
 import subprocess
+import sys
 from datetime import datetime
 from pathlib import Path
 
@@ -132,8 +135,16 @@ def main(argv=None) -> int:
 
     device = _get_device(cfg.get("device", "auto"))
 
+    resume_path = Path(args.resume) if args.resume else None
+    if resume_path is not None and resume_path.is_dir():
+        resume_path = resume_path / "checkpoints" / "last.pt"
+    if resume_path is not None and not resume_path.is_file():
+        parser.error(f"no resumable checkpoint at {resume_path}")
+
     if args.run_dir:
         run_dir = Path(args.run_dir)
+    elif resume_path is not None:
+        run_dir = resume_path.parent.parent
     else:
         run_dir = _create_run_dir(cfg)
 
@@ -151,13 +162,7 @@ def main(argv=None) -> int:
 
     trainer = Trainer(cfg, run_dir, device)
 
-    resume_path = None
-    if args.resume:
-        resume_path = Path(args.resume)
-        if resume_path.is_dir():
-            from drstage.training.checkpoint import resolve_checkpoint
-
-            resume_path = resolve_checkpoint(resume_path)
+    if resume_path is not None:
         logger.info(f"Resuming from {resume_path}")
 
     summary = trainer.fit(resume_from=resume_path)
@@ -169,4 +174,8 @@ def main(argv=None) -> int:
 
 
 if __name__ == "__main__":
-    exit(main())
+    code = main()
+    logging.shutdown()
+    sys.stdout.flush()
+    # persistent spawn-mode DataLoader workers can block interpreter shutdown on macOS
+    os._exit(code)
