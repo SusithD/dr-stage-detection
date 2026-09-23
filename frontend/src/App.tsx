@@ -1,188 +1,191 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from './api'
-import { DemoBanner } from './components/DemoBanner'
-import { Findings } from './components/Findings'
-import { SampleStrip } from './components/SampleStrip'
-import { ViewToggle } from './components/ViewToggle'
-import { Viewport } from './components/Viewport'
-import { asGrade, GRADES } from './grades'
-import type { HealthResponse, PredictResponse, Sample, ViewMode } from './types'
+import { PrintReport } from './components/PrintReport'
+import { ReportPanel } from './components/ReportPanel'
+import { ShortcutsDialog } from './components/ShortcutsDialog'
+import { TopBar } from './components/TopBar'
+import { VisitPanel } from './components/VisitPanel'
+import { Viewer } from './components/Viewer'
+import type { ClinicianReview, EyeCase, EyeSide, HealthResponse, Sample, ViewMode } from './types'
 
-type Status = 'idle' | 'loading' | 'done' | 'error'
+type Theme = 'light' | 'dark'
+const THEME_KEY = 'retinascan-theme'
+const EMPTY_VISIT: Record<EyeSide, EyeCase | null> = { right: null, left: null }
+
+function initialTheme(): Theme {
+  try {
+    const saved = localStorage.getItem(THEME_KEY)
+    if (saved === 'light' || saved === 'dark') return saved
+  } catch {
+    // storage can be unavailable in private windows
+  }
+  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+}
 
 export default function App() {
   const [health, setHealth] = useState<HealthResponse | null>(null)
   const [serverError, setServerError] = useState<string | null>(null)
   const [samples, setSamples] = useState<Sample[]>([])
-  const [status, setStatus] = useState<Status>('idle')
-  const [result, setResult] = useState<PredictResponse | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [preview, setPreview] = useState<string | null>(null)
-  const [activeSample, setActiveSample] = useState<Sample | null>(null)
+  const [patientRef, setPatientRef] = useState('')
+  const [eyes, setEyes] = useState<Record<EyeSide, EyeCase | null>>(EMPTY_VISIT)
+  const [active, setActive] = useState<EyeSide>('right')
   const [view, setView] = useState<ViewMode>('original')
-  const [opacity, setOpacity] = useState(0.6)
-  const fileInput = useRef<HTMLInputElement>(null)
-  const requestId = useRef(0)
+  const [opacity, setOpacity] = useState(0.55)
+  const [loupe, setLoupe] = useState(false)
+  const [theme, setTheme] = useState<Theme>(initialTheme)
+  const [shortcutsOpen, setShortcutsOpen] = useState(false)
+  const tokens = useRef<Record<EyeSide, number>>({ right: 0, left: 0 })
 
   useEffect(() => {
-    api
-      .health()
-      .then(setHealth)
-      .catch((e: Error) => setServerError(e.message))
-    api
-      .samples()
-      .then(setSamples)
-      .catch(() => setSamples([]))
+    api.health().then(setHealth).catch((e: Error) => setServerError(e.message))
+    api.samples().then(setSamples).catch(() => setSamples([]))
   }, [])
 
-  useEffect(() => () => {
-    if (preview) URL.revokeObjectURL(preview)
-  }, [preview])
-
-  const analyse = useCallback(async (blob: Blob, filename: string, sample: Sample | null) => {
-    const id = ++requestId.current
-    setPreview(URL.createObjectURL(blob))
-    setActiveSample(sample)
-    setResult(null)
-    setError(null)
-    setStatus('loading')
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme
     try {
-      const response = await api.predict(blob, filename)
-      if (id !== requestId.current) return
-      setResult(response)
-      setStatus('done')
-    } catch (e) {
-      if (id !== requestId.current) return
-      setError((e as Error).message)
-      setStatus('error')
+      localStorage.setItem(THEME_KEY, theme)
+    } catch {
+      // ignore unavailable storage
     }
+  }, [theme])
+
+  const patch = useCallback((side: EyeSide, update: Partial<EyeCase>) => {
+    setEyes((prev) => (prev[side] ? { ...prev, [side]: { ...prev[side]!, ...update } } : prev))
   }, [])
 
-  const onFile = (file: File) => void analyse(file, file.name, null)
+  const analyse = useCallback(
+    async (side: EyeSide, blob: Blob, filename: string, sample: Sample | null) => {
+      const token = ++tokens.current[side]
+      setEyes((prev) => {
+        if (prev[side]) URL.revokeObjectURL(prev[side]!.preview)
+        return {
+          ...prev,
+          [side]: {
+            side,
+            filename,
+            preview: URL.createObjectURL(blob),
+            sample,
+            status: 'analysing',
+            result: null,
+            error: null,
+            review: null,
+          },
+        }
+      })
+      setActive(side)
+      try {
+        const result = await api.predict(blob, filename)
+        if (token === tokens.current[side]) patch(side, { status: 'done', result })
+      } catch (e) {
+        if (token === tokens.current[side]) patch(side, { status: 'error', error: (e as Error).message })
+      }
+    },
+    [patch],
+  )
 
   const onSample = async (sample: Sample) => {
+    const side = active
     try {
       const blob = await api.sampleImage(sample.id)
-      await analyse(blob, `${sample.id}.jpg`, sample)
+      await analyse(side, blob, `${sample.id}.jpg`, sample)
     } catch (e) {
-      setError((e as Error).message)
-      setStatus('error')
+      setServerError((e as Error).message)
     }
   }
 
-  const reset = () => {
-    requestId.current++
-    setStatus('idle')
-    setResult(null)
-    setError(null)
-    setPreview(null)
-    setActiveSample(null)
+  const clear = (side: EyeSide) => {
+    tokens.current[side]++
+    setEyes((prev) => {
+      if (prev[side]) URL.revokeObjectURL(prev[side]!.preview)
+      return { ...prev, [side]: null }
+    })
   }
 
+  const newVisit = () => {
+    clear('right')
+    clear('left')
+    setPatientRef('')
+    setActive('right')
+    setView('original')
+  }
+
+  useEffect(() => {
+    const handler = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement
+      if (target.closest('input, textarea, select, [contenteditable]') || event.metaKey || event.ctrlKey)
+        return
+      if (event.key === '?') setShortcutsOpen(true)
+      else if (event.key.toLowerCase() === 'r') setActive('right')
+      else if (event.key.toLowerCase() === 'e') setActive('left')
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [])
+
+  const anyDone = Boolean(eyes.right?.result || eyes.left?.result)
+  const busy = eyes.right?.status === 'analysing' || eyes.left?.status === 'analysing'
+
   return (
-    <div className="app">
-      <header className="masthead">
-        <h1 className="brand">RetinaScan</h1>
-        <p className="tagline">Diabetic retinopathy screening from fundus photographs</p>
-      </header>
-
-      {health?.demo && <DemoBanner />}
-      {serverError && (
-        <p className="server-error" role="alert">
-          {serverError}
-        </p>
-      )}
-
-      <main className="workspace">
-        <section className="examine" aria-label="Photograph">
-          <Viewport
-            preview={preview}
-            images={result?.images ?? null}
-            view={view}
-            heatmapOpacity={opacity}
-            loading={status === 'loading'}
-            onFile={onFile}
+    <>
+      <div className="app">
+        <TopBar
+          health={health}
+          serverError={serverError}
+          theme={theme}
+          onToggleTheme={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
+          onShortcuts={() => setShortcutsOpen(true)}
+          onPrint={() => window.print()}
+          canPrint={anyDone}
+          onNewVisit={newVisit}
+        />
+        {serverError && (
+          <p className="banner banner-fail" role="alert">
+            {serverError}
+          </p>
+        )}
+        {health?.demo && (
+          <p className="banner banner-warn">
+            No trained model is loaded, so grades are simulated. Start the server with{' '}
+            <code>--checkpoint</code> to use the trained model.
+          </p>
+        )}
+        <main className="workspace">
+          <VisitPanel
+            patientRef={patientRef}
+            onPatientRefChange={setPatientRef}
+            eyes={eyes}
+            active={active}
+            onSelect={setActive}
+            onFile={(side, file) => void analyse(side, file, file.name, null)}
+            onClear={clear}
+            samples={samples}
+            onSample={onSample}
+            busy={Boolean(busy)}
           />
-          <div className="examine-controls">
-            <ViewToggle
-              view={view}
-              onViewChange={setView}
-              heatmapOpacity={opacity}
-              onOpacityChange={setOpacity}
-              disabled={!result}
-            />
-            <button
-              type="button"
-              className="button-primary"
-              onClick={() => fileInput.current?.click()}
-              disabled={status === 'loading' || !!serverError}
-            >
-              Upload a photograph
-            </button>
-            <input
-              ref={fileInput}
-              type="file"
-              accept=".jpg,.jpeg,.png,.tif,.tiff"
-              className="visually-hidden"
-              tabIndex={-1}
-              onChange={(event) => {
-                const file = event.target.files?.[0]
-                if (file) onFile(file)
-                event.target.value = ''
-              }}
-            />
-          </div>
-        </section>
-
-        <section className="report" aria-live="polite" aria-busy={status === 'loading'}>
-          {status === 'idle' && (
-            <p className="report-empty">
-              Upload a fundus photograph or choose a sample to see findings.
-            </p>
-          )}
-          {status === 'loading' && <p className="report-empty">Analysing the photograph…</p>}
-          {status === 'error' && (
-            <div className="report-error">
-              <h2>The photograph couldn't be analysed</h2>
-              <p>{error}</p>
-              <button type="button" className="button-secondary" onClick={reset}>
-                Try another image
-              </button>
-            </div>
-          )}
-          {status === 'done' && result && (
-            <>
-              <Findings result={result} health={health} />
-              {activeSample && <GroundTruth sample={activeSample} predicted={result.grade} />}
-            </>
-          )}
-        </section>
-      </main>
-
-      <SampleStrip
-        samples={samples}
-        activeId={activeSample?.id ?? null}
-        disabled={status === 'loading'}
-        onSelect={onSample}
-      />
-
-      <footer className="colophon">
-        Research prototype for a university coursework project. Not a medical device and not for
-        clinical use.
-      </footer>
-    </div>
-  )
-}
-
-function GroundTruth({ sample, predicted }: { sample: Sample; predicted: number }) {
-  const match = sample.label === predicted
-  return (
-    <p className="ground-truth" data-match={match}>
-      <svg viewBox="0 0 20 20" aria-hidden="true">
-        {match ? <path d="M4 10.5l4 4 8-9" /> : <path d="M5 5l10 10M15 5L5 15" />}
-      </svg>
-      Ground truth grade: {GRADES[asGrade(sample.label)].short}. Model prediction:{' '}
-      {GRADES[asGrade(predicted)].short}.
-    </p>
+          <Viewer
+            key={eyes[active]?.preview ?? active}
+            eye={eyes[active]}
+            side={active}
+            view={view}
+            onViewChange={setView}
+            opacity={opacity}
+            onOpacityChange={setOpacity}
+            loupe={loupe}
+            onLoupeChange={setLoupe}
+            onFile={(file) => void analyse(active, file, file.name, null)}
+          />
+          <ReportPanel
+            eyes={eyes}
+            active={active}
+            onSelect={setActive}
+            onReview={(side, review: ClinicianReview | null) => patch(side, { review })}
+            health={health}
+          />
+        </main>
+      </div>
+      <PrintReport patientRef={patientRef} eyes={eyes} health={health} />
+      <ShortcutsDialog open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
+    </>
   )
 }

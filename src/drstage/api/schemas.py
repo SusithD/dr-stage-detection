@@ -30,6 +30,23 @@ class PredictImages(BaseModel):
     heatmap: str = Field(..., description="Data URL: RGBA Grad-CAM")
 
 
+class QualityCheckOut(BaseModel):
+    """One image quality measure."""
+
+    key: str
+    label: str
+    status: str = Field(..., description="ok, warn or fail")
+    value: float
+    message: str
+
+
+class QualityReport(BaseModel):
+    """Heuristic image quality screen."""
+
+    gradable: bool
+    checks: list[QualityCheckOut]
+
+
 class PredictResponse(BaseModel):
     """POST /api/predict response."""
 
@@ -41,6 +58,7 @@ class PredictResponse(BaseModel):
     referable: bool = Field(..., description="grade >= 2")
     class_probs: list[float] = Field(..., description="5 probabilities summing to ~1")
     images: PredictImages
+    quality: QualityReport
     inference_ms: float
 
 

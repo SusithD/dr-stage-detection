@@ -258,3 +258,23 @@ def test_real_predictor_demo_flag(tmp_path):
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
+
+
+def test_predict_includes_quality_report(test_client):
+    """A well-exposed synthetic fundus passes the field check and reports every measure."""
+    img = make_fundus(800, 600, seed=3)
+    ok, buf = cv2.imencode(".png", cv2.cvtColor(img, cv2.COLOR_RGB2BGR))
+    quality = test_client.post(
+        "/api/predict", files={"file": ("f.png", buf.tobytes(), "image/png")}
+    ).json()["quality"]
+    assert {c["key"] for c in quality["checks"]} == {"exposure", "contrast", "sharpness", "field"}
+    assert all(c["status"] in {"ok", "warn", "fail"} for c in quality["checks"])
+    assert isinstance(quality["gradable"], bool)
+
+
+def test_dark_image_is_not_gradable():
+    """A nearly black photograph fails the quality screen."""
+    from drstage.api.quality import assess_quality, is_gradable
+
+    checks = assess_quality(make_fundus(640, 480, dark=True))
+    assert not is_gradable(checks)

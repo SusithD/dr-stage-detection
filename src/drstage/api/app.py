@@ -16,7 +16,16 @@ from starlette.concurrency import run_in_threadpool
 
 from drstage.api.imaging import decode_upload, heatmap_to_rgba, thumbnail_jpeg, to_png_data_url
 from drstage.api.predictors import Predictor, load_predictor
-from drstage.api.schemas import HealthResponse, ModelInfo, PredictImages, PredictResponse, Sample
+from drstage.api.quality import assess_quality, is_gradable
+from drstage.api.schemas import (
+    HealthResponse,
+    ModelInfo,
+    PredictImages,
+    PredictResponse,
+    QualityCheckOut,
+    QualityReport,
+    Sample,
+)
 from drstage.data.registry import CLASS_NAMES
 
 logger = logging.getLogger(__name__)
@@ -127,6 +136,7 @@ def create_app(
         async with state.lock:
             try:
                 pred = await run_in_threadpool(state.predictor.predict, image)
+                checks = await run_in_threadpool(assess_quality, image)
             except Exception as e:
                 logger.exception("prediction failed")
                 raise HTTPException(
@@ -148,6 +158,10 @@ def create_app(
                 original=to_png_data_url(pred.original),
                 enhanced=to_png_data_url(pred.enhanced),
                 heatmap=to_png_data_url(heatmap_to_rgba(pred.heatmap)),
+            ),
+            quality=QualityReport(
+                gradable=is_gradable(checks),
+                checks=[QualityCheckOut(**vars(c)) for c in checks],
             ),
             inference_ms=round(elapsed_ms, 1),
         )
