@@ -1,114 +1,88 @@
 # DR Stage Detection
 
-Diabetic Retinopathy grading from fundus photographs using deep learning.
+Detection and ICDR stage grading (0 no DR, 1 mild, 2 moderate, 3 severe, 4 proliferative) of
+diabetic retinopathy from colour fundus photographs, using a transfer-learned CNN with an ordinal
+(CORN) output head, plus the RetinaScan web prototype.
+
+- **Training data:** DDR (Li et al., 2019; 13,673 images from 147 hospitals), Kaggle mirror
+  `mariaherrerot/ddrdataset`, split 6:2:3 into train/validation/test.
+- **External test:** APTOS 2019 labelled images, Kaggle mirror `mariaherrerot/aptos2019`, never
+  used for training or model selection.
+- **Main model:** ConvNeXt-Base (ImageNet-22k pretrained), compared against ResNet50,
+  EfficientNet-B0 and EfficientNet-B5 (Noisy Student).
 
 ## Setup
 
-### Requirements
-- Python 3.12+
-- uv package manager
-
-### Installation
+Requires Python 3.12, [uv](https://docs.astral.sh/uv/), Node 20+ (web app only) and a Kaggle API
+token in `~/.kaggle/`.
 
 ```bash
-git clone <repo>
-cd dr-stage-detection
 uv sync
-```
-
-## Data
-
-### Download
-
-Download the DDR and APTOS datasets:
-
-```bash
 scripts/download_data.sh
 ```
 
-This requires the Kaggle CLI to be configured with credentials.
-
-### Directory Structure
-
-After download, the data should be organized as:
-
-```
-data/
-  raw/
-    ddr/
-      DR_grading.csv
-      DR_grading/
-        DR_grading/
-          <image files>
-    aptos/
-      train.csv
-      train_images/
-        <image files>
-```
-
-## Prepare Data
-
-Run the full data preparation pipeline:
+## Prepare data
 
 ```bash
-uv run python -m drstage.cli.prepare_data --config configs/data.yaml
+uv run python -m drstage.cli.prepare_data --config configs/data.yaml --methods ben_graham
 ```
 
-### Pipeline Stages
+Stages run in order and can be re-run individually with `--stage`:
 
-- `manifest`: Load and validate raw datasets
-- `hash`: Compute perceptual hashes
-- `dedup`: Identify and remove duplicates
-- `split`: Stratified split into train/val/test
-- `cache`: Preprocess and cache images
-- `report`: Generate analysis figures
+| Stage | Output |
+|---|---|
+| `manifest` | `data/processed/manifests/<dataset>_raw.csv` |
+| `hash` | perceptual hashes for duplicate detection |
+| `dedup` | near-duplicate groups; label-conflicting groups dropped, APTOS images overlapping DDR dropped |
+| `split` | `splits/ddr_split.csv` (stratified 6:2:3), `splits/aptos_test.csv` |
+| `cache` | preprocessed 512 px images per method (`ben_graham`, `clahe_l`, `none`) |
+| `report` | `reports/` figures and `dedup_report.json` |
 
-Run specific stages:
+Config values can be overridden, e.g. `-o preprocess.num_workers=4`.
+
+## Train
 
 ```bash
-uv run python -m drstage.cli.prepare_data --stage manifest
-uv run python -m drstage.cli.prepare_data --stage cache --methods ben_graham,clahe_l
+uv run python -m drstage.cli.train --config configs/train/final_convnext_b_512.yaml
 ```
 
-### Configuration
+Each run writes `runs/<exp_name>/<timestamp>/` with the resolved config, `history.csv`,
+`checkpoints/best.pt` (EMA weights plus everything needed for inference) and `last.pt`
+(resume with `--resume <run dir>`). Experiment configs in `configs/train/` inherit from
+`base.yaml`:
 
-Configuration is in `configs/data.yaml`. Override values on the command line:
+| Config | Purpose |
+|---|---|
+| `arch_*_384.yaml` | architecture comparison at 384 px (`scripts/run_arch_comparison.sh`) |
+| `abl_*_384.yaml` | output head, preprocessing and sampler ablations |
+| `lr_*_384.yaml` | learning-rate sweep |
+| `final_convnext_b_512.yaml`, `final_effnet_b5_456.yaml` | final models |
+
+## Evaluate and explain
 
 ```bash
-uv run python -m drstage.cli.prepare_data -o preprocess.size=384 -o seed=123
+uv run python -m drstage.cli.evaluate --config configs/eval/final_models.yaml
+uv run python -m drstage.cli.gradcam --checkpoint runs/final_convnext_b_512 \
+  --dataset ddr --split test --out runs/final_convnext_b_512/gradcam
 ```
 
-## Output Layout
+Evaluation reports accuracy, per-class precision/recall/F1, quadratic weighted kappa, confusion
+matrices, DR-vs-no-DR and referable-DR sensitivity/specificity/ROC-AUC, flip test-time
+augmentation, ensembles and error analysis for the DDR test set and APTOS.
 
-After preparation, processed data is at `data/processed/`:
-
-```
-data/processed/
-  manifests/
-    ddr_raw.csv, aptos_raw.csv
-  hashes/
-    ddr_phash.csv, aptos_phash.csv
-  images/
-    <dataset>/<method>/<size>/
-      <image_id>.png
-  splits/
-    ddr_split.csv, aptos_test.csv, split_summary.json
-  reports/
-    dedup_report.json, prepare_data.log
-    fig_class_distribution.png, fig_split_distribution.png
-    fig_image_size_hist.png, fig_preprocess_examples.png
-    fig_dup_examples.png
-```
-
-## Testing
+## Web app
 
 ```bash
-uv run pytest tests/
+cd frontend && npm install && npm run build && cd ..
+uv run python -m drstage.cli.serve --checkpoint runs/final_convnext_b_512
 ```
 
-## Linting and Formatting
+Open http://127.0.0.1:8000. Without `--checkpoint` the app runs in a clearly labelled demo mode.
+For frontend development run `npm run dev` in `frontend/` alongside the server.
+
+## Development
 
 ```bash
-uv run ruff check src/
-uv run ruff format src/
+uv run pytest
+uv run ruff check src tests && uv run ruff format --check src tests
 ```

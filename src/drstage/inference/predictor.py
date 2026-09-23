@@ -11,6 +11,7 @@ from drstage.data.transforms import build_eval_transforms
 from drstage.evaluation.gradcam import ArgmaxTarget, CornExpectedGradeTarget, build_cam
 from drstage.evaluation.predict import flip_tta_logits_to_probs, grade_from_class_probs
 from drstage.models.factory import build_model
+from drstage.training.checkpoint import resolve_checkpoint
 
 logger = logging.getLogger(__name__)
 
@@ -150,7 +151,7 @@ def load_predictor(
     Loads model weights and builds Predictor without reading configs/ or data/.
 
     Args:
-        checkpoint_path: Path to checkpoint file.
+        checkpoint_path: Checkpoint file, run directory or experiment directory (newest run).
         device: Device to load on ('auto', 'cpu', 'mps', 'cuda').
         tta: Whether to apply TTA at inference.
 
@@ -161,9 +162,7 @@ def load_predictor(
         FileNotFoundError: If checkpoint does not exist.
         KeyError: If checkpoint is missing required keys.
     """
-    checkpoint_path = Path(checkpoint_path)
-    if not checkpoint_path.exists():
-        raise FileNotFoundError(f"Checkpoint not found: {checkpoint_path}")
+    checkpoint_path = resolve_checkpoint(checkpoint_path)
 
     if isinstance(device, str):
         if device == "auto":
