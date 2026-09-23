@@ -1,3 +1,4 @@
+exp_name: smoke_real
 base: configs/train/base.yaml
 data:
   img_size: 384

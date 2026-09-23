@@ -1,3 +1,4 @@
+exp_name: final_effnet_b5_456
 base: configs/train/base.yaml
 data:
   img_size: 456

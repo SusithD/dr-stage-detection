@@ -1,3 +1,4 @@
+exp_name: abl_sampler_384
 base: configs/train/base.yaml
 data:
   img_size: 384

@@ -1,3 +1,4 @@
+exp_name: final_convnext_b_512
 base: configs/train/base.yaml
 data:
   img_size: 512

@@ -1,3 +1,4 @@
+exp_name: arch_effnet_b5_384
 base: configs/train/base.yaml
 data:
   img_size: 384
