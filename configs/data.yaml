@@ -1,0 +1,43 @@
+seed: 42
+paths:
+  processed_root: data/processed
+datasets:
+  ddr:
+    csv: data/raw/ddr/DR_grading.csv
+    image_dir: data/raw/ddr/DR_grading/DR_grading
+    id_col: id_code
+    label_col: diagnosis
+    id_has_extension: true
+    image_ext: ""
+  aptos:
+    csv: data/raw/aptos/train.csv
+    image_dir: data/raw/aptos/train_images
+    id_col: id_code
+    label_col: diagnosis
+    id_has_extension: false
+    image_ext: ".png"
+preprocess:
+  size: 512
+  methods: [ben_graham, clahe_l, none]
+  circle_crop:
+    threshold: 10
+    min_radius_frac: 0.25
+  ben_graham:
+    sigma_frac: 0.0195
+    alpha: 4
+    beta: -4
+    gamma: 128
+    mask_radius_frac: 0.92
+  clahe_l:
+    clip_limit: 2.0
+    tile_grid: 8
+  cache_format: png
+  cache_jpeg_quality: 95
+  num_workers: 8
+dedup:
+  hash_size: 16
+  hash_image_size: 256
+  near_dup_threshold: 6
+  max_examples_figure: 8
+split:
+  ratios: {train: 0.5455, val: 0.1818, test: 0.2727}
