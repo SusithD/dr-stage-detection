@@ -12,3 +12,5 @@ optim:
   lr_warmup_epochs: 1
 early_stopping:
   patience: 6
+amp:
+  dtype: "off"

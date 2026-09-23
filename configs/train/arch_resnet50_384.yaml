@@ -11,3 +11,5 @@ train:
   accum_steps: 1
 optim:
   lr_warmup_epochs: 1
+amp:
+  dtype: "off"
