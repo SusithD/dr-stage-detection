@@ -39,6 +39,7 @@ select = ["E", "F", "I", "B", "UP"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = ["slow: slower end-to-end tests"]
 pythonpath = ["src"]
 
 [dependency-groups]
