@@ -4,6 +4,7 @@ version = "0.1.0"
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "albumentations>=2.0.8",
+    "fastapi>=0.141.1",
     "grad-cam>=1.5.7",
     "gradio>=6.28.0",
     "imagehash>=4.3.2",
@@ -11,6 +12,7 @@ dependencies = [
     "numpy>=2.5.3",
     "opencv-python-headless>=5.0.0.93",
     "pandas>=3.0.6",
+    "python-multipart>=0.0.32",
     "pyyaml>=6.0.3",
     "scikit-learn>=1.9.1",
     "seaborn>=0.13.2",
@@ -18,6 +20,7 @@ dependencies = [
     "torch>=2.14.0",
     "torchvision>=0.29.0",
     "tqdm>=4.70.1",
+    "uvicorn[standard]>=0.53.0",
 ]
 
 [build-system]
@@ -40,6 +43,7 @@ pythonpath = ["src"]
 
 [dependency-groups]
 dev = [
+    "httpx>=0.28.1",
     "pytest>=9.1.1",
     "ruff>=0.16.8",
 ]
