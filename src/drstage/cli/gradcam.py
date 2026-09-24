@@ -1,194 +1,113 @@
-"""CLI for Grad-CAM visualization."""
+"""Grad-CAM figures for a trained model on a held-out split.
+
+Examples are chosen from an evaluation predictions file: for each true grade, the most confident
+correct and the most confident incorrect predictions. Heatmaps are produced by the same
+Predictor the web app uses, so figures match what a clinician would see.
+"""
 
 import argparse
 import logging
+import sys
 from pathlib import Path
 
-import cv2
-import numpy as np
-import pandas as pd
-import torch
+import matplotlib
 
-from drstage.data.dataset import CachedFundusDataset, load_split
-from drstage.data.loaders import build_dataloader
-from drstage.data.preprocess import load_rgb
-from drstage.data.transforms import build_eval_transforms
-from drstage.evaluation.gradcam import build_cam, cam_for_batch, select_examples
-from drstage.evaluation.predict import run_inference
-from drstage.inference.predictor import load_predictor
-from drstage.utils.seed import seed_everything
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt  # noqa: E402
+import numpy as np  # noqa: E402
+import pandas as pd  # noqa: E402
 
-logger = logging.getLogger(__name__)
+from drstage.data.preprocess import load_rgb  # noqa: E402
+from drstage.data.registry import CLASS_NAMES  # noqa: E402
+from drstage.inference.predictor import load_predictor  # noqa: E402
+from drstage.utils.io import write_csv  # noqa: E402
+from drstage.utils.logging import get_logger  # noqa: E402
 
-
-def resolve_device(device: str) -> torch.device:
-    """Resolve device string to torch.device.
-
-    Args:
-        device: 'auto', 'mps', 'cuda', or 'cpu'.
-
-    Returns:
-        torch.device object.
-    """
-    if device == "auto":
-        if torch.cuda.is_available():
-            return torch.device("cuda")
-        elif hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
-            return torch.device("mps")
-        else:
-            return torch.device("cpu")
-    return torch.device(device)
+logger = logging.getLogger("drstage.gradcam")
 
 
-def main(argv=None):
-    """Main Grad-CAM CLI.
-
-    Args:
-        argv: Command-line arguments.
-
-    Returns:
-        Exit code.
-    """
-    parser = argparse.ArgumentParser(description="Generate Grad-CAM visualizations")
-    parser.add_argument("--checkpoint", required=True, help="Checkpoint path or run dir")
-    parser.add_argument("--dataset", default="ddr", help="Dataset name")
-    parser.add_argument("--split", default="test", help="Dataset split")
-    parser.add_argument("--csv", help="Custom split CSV path")
-    parser.add_argument("--out", required=True, help="Output directory")
-    parser.add_argument("--per-grade", type=int, default=3, help="Examples per grade")
-    parser.add_argument(
-        "--target", default="expected_grade", help="CAM target: expected_grade, prob_dr, argmax"
+def select_examples(preds: pd.DataFrame, per_grade: int) -> pd.DataFrame:
+    """Most confident correct and incorrect predictions for each true grade."""
+    probs = preds[[f"p{i}" for i in range(len(CLASS_NAMES))]].to_numpy()
+    preds = preds.assign(confidence=probs.max(axis=1), correct=preds["label"] == preds["pred"])
+    picked = (
+        preds.sort_values("confidence", ascending=False)
+        .groupby(["label", "correct"], group_keys=False)
+        .head(per_grade)
     )
-    parser.add_argument("--method", default="gradcam", help="CAM method: gradcam, gradcam++")
-    parser.add_argument("--device", default="auto", help="Device: auto, mps, cuda, cpu")
+    return picked.sort_values(["correct", "label", "confidence"], ascending=[False, True, False])
+
+
+def plot_pairs(items: list[dict], out: Path, title: str) -> None:
+    """Rows of (photograph, heatmap overlay) pairs, two pairs per row."""
+    pairs_per_row = 2
+    rows = int(np.ceil(len(items) / pairs_per_row))
+    fig, axes = plt.subplots(rows, pairs_per_row * 2, figsize=(pairs_per_row * 5, rows * 2.6))
+    axes = np.atleast_2d(axes)
+    for ax in axes.flat:
+        ax.axis("off")
+    for i, item in enumerate(items):
+        r, c = divmod(i, pairs_per_row)
+        left, right = axes[r, 2 * c], axes[r, 2 * c + 1]
+        left.imshow(item["image"])
+        left.set_title(item["caption"], fontsize=8, loc="left")
+        right.imshow(item["image"])
+        right.imshow(item["heatmap"], cmap="inferno", alpha=item["heatmap"] * 0.75)
+        right.set_title("Grad-CAM", fontsize=8, loc="left")
+    fig.suptitle(title, fontsize=11, x=0.01, ha="left")
+    fig.tight_layout()
+    out.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Grad-CAM figures for correct and incorrect cases")
+    parser.add_argument("--checkpoint", required=True, help="checkpoint file or run directory")
+    parser.add_argument("--predictions", required=True, help="predictions.csv from evaluate")
+    parser.add_argument("--split-csv", required=True, help="split CSV with image_id and path")
+    parser.add_argument("--out", required=True, help="output directory")
+    parser.add_argument("--per-grade", type=int, default=2)
+    parser.add_argument("--device", default="auto")
     args = parser.parse_args(argv)
 
-    out_dir = Path(args.out)
-    out_dir.mkdir(parents=True, exist_ok=True)
-    device = resolve_device(args.device)
+    out = Path(args.out)
+    get_logger("drstage", log_file=out / "gradcam.log")
+    predictor = load_predictor(args.checkpoint, device=args.device, tta=False)
+    paths = pd.read_csv(args.split_csv).set_index("image_id")["path"]
+    examples = select_examples(pd.read_csv(args.predictions), args.per_grade)
 
-    seed_everything(42, deterministic=False)
-
-    try:
-        predictor = load_predictor(args.checkpoint, device=device)
-    except Exception as e:
-        logger.error(f"Failed to load checkpoint: {e}")
-        return 1
-
-    model = predictor.model
-    model_info = predictor.info()
-    backbone_name = model_info["name"]
-    head = model_info["head"]
-    img_size = model_info["image_size"]
-    method = model_info["preprocessing"]
-
-    mean, std = [0.5, 0.5, 0.5], [0.5, 0.5, 0.5]
-    eval_transform = build_eval_transforms(img_size, mean, std)
-
-    processed_root = Path("data/processed")
-    if args.csv:
-        split_df = pd.read_csv(args.csv)
-    else:
-        csv_path = processed_root / "splits" / f"{args.dataset}_split.csv"
-        split_df = load_split(csv_path, args.split)
-
-    cache_root = processed_root / "images" / args.dataset / method / str(img_size)
-
-    try:
-        dataset = CachedFundusDataset(split_df, cache_root, img_size, eval_transform)
-        loader = build_dataloader(
-            dataset, batch_size=1, shuffle=False, num_workers=0, device=device
-        )
-    except RuntimeError as e:
-        logger.error(f"Failed to load dataset: {e}")
-        return 1
-
-    logger.info("Running inference...")
-    predictions = run_inference(
-        model,
-        loader,
-        device,
-        amp=None,
-        tta=False,
-        head=head,
-        limit_batches=0,
-    )
-
-    logger.info("Selecting examples...")
-    examples = select_examples(predictions, per_grade=args.per_grade)
-
-    logger.info("Building Grad-CAM...")
-    cam = build_cam(model, backbone_name, method=args.method)
-
-    overlays_dir = out_dir / "overlays"
-    overlays_dir.mkdir(parents=True, exist_ok=True)
-
-    correct_items = []
-    incorrect_items = []
-
-    for _, row in examples.iterrows():
-        image_id = row["image_id"]
-        label = int(row["label"])
-        pred = int(row["grade"])
-
-        try:
-            img_path = cache_root / f"{image_id}.png"
-            img_rgb = load_rgb(img_path)
-
-            x = eval_transform(image=img_rgb)["image"].unsqueeze(0).to(device)
-
-            model.eval()
-            for param in model.parameters():
-                param.requires_grad = True
-
-            heatmap = cam_for_batch(cam, x, args.target, head, np.array([pred]))[0]
-
-            heatmap_normalized = (heatmap - heatmap.min()) / (heatmap.max() - heatmap.min() + 1e-8)
-
-            overlay_bgr = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2BGR)
-            heatmap_color = cv2.applyColorMap(
-                (heatmap_normalized * 255).astype(np.uint8), cv2.COLORMAP_JET
-            )
-            overlay = cv2.addWeighted(overlay_bgr, 0.6, heatmap_color, 0.4, 0)
-
-            overlay_path = overlays_dir / f"{image_id}.png"
-            cv2.imwrite(str(overlay_path), overlay)
-
-            class_names = ["No DR", "Mild", "Moderate", "Severe", "Proliferative"]
-            title = f"True: {class_names[label]}, Pred: {class_names[pred]}"
-
-            item = {
-                "image": img_rgb,
-                "heatmap": heatmap_normalized,
-                "title": title,
+    groups: dict[bool, list[dict]] = {True: [], False: []}
+    for row in examples.itertuples():
+        result = predictor.predict(load_rgb(Path(paths[row.image_id])), heatmap=True)
+        overlay_dir = out / "overlays"
+        overlay_dir.mkdir(parents=True, exist_ok=True)
+        plt.imsave(overlay_dir / f"{row.image_id}_heatmap.png", result["heatmap"], cmap="inferno")
+        groups[bool(row.correct)].append(
+            {
+                "image": result["original"],
+                "heatmap": result["heatmap"],
+                "caption": (
+                    f"True: {CLASS_NAMES[row.label]}\n"
+                    f"Predicted: {CLASS_NAMES[row.pred]} ({row.confidence:.0%})"
+                ),
             }
+        )
 
-            if pred == label:
-                correct_items.append(item)
-            else:
-                incorrect_items.append(item)
-
-        except Exception as e:
-            logger.warning(f"Failed to process {image_id}: {e}")
-            continue
-
-    if correct_items:
-        from drstage.evaluation.plots import plot_cam_grid
-
-        plot_cam_grid(correct_items[:10], out_dir / "cam_grid_correct.png", ncols=5)
-
-    if incorrect_items:
-        from drstage.evaluation.plots import plot_cam_grid
-
-        plot_cam_grid(incorrect_items[:10], out_dir / "cam_grid_incorrect.png", ncols=5)
-
-    examples.to_csv(out_dir / "cam_examples.csv", index=False)
-
-    logger.info(f"Grad-CAM complete. Results in {out_dir}")
+    if groups[True]:
+        plot_pairs(
+            groups[True], out / "cam_correct.png", "Correct predictions, most confident per grade"
+        )
+    if groups[False]:
+        plot_pairs(
+            groups[False],
+            out / "cam_incorrect.png",
+            "Incorrect predictions, most confident per grade",
+        )
+    write_csv(examples, out / "cam_examples.csv")
+    logger.info(f"Grad-CAM figures written to {out}")
     return 0
 
 
 if __name__ == "__main__":
-    import sys
-
     sys.exit(main())
