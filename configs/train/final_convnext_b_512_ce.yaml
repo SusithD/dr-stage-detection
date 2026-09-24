@@ -1,0 +1,16 @@
+exp_name: final_convnext_b_512_ce
+base: configs/train/base.yaml
+data:
+  img_size: 512
+  method: none
+  batch_size: 8
+model:
+  head: ce
+train:
+  epochs: 25
+  warmup_epochs: 2
+  accum_steps: 4
+optim:
+  lr_warmup_epochs: 1
+early_stopping:
+  patience: 6

@@ -2,6 +2,7 @@ exp_name: final_convnext_b_512
 base: configs/train/base.yaml
 data:
   img_size: 512
+  method: none
   batch_size: 8
 train:
   epochs: 25
