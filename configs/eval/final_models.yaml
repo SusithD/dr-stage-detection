@@ -3,8 +3,10 @@ device: auto
 processed_root: data/processed
 data_config: configs/data.yaml
 models:
-  - {name: convnext_b_512, checkpoint: runs/final_convnext_b_512}
-  - {name: effnet_b5_456, checkpoint: runs/final_effnet_b5_456}
+  - {name: convnext_b_512_ce, checkpoint: runs/final_convnext_b_512_ce}
+  - {name: convnext_b_512_corn, checkpoint: runs/final_convnext_b_512}
+ensembles:
+  - {name: ensemble_ce_corn, members: [convnext_b_512_ce, convnext_b_512_corn]}
 datasets:
   - {name: ddr_test, csv: data/processed/splits/ddr_split.csv, split: test, dataset: ddr}
   - {name: aptos_ext, csv: data/processed/splits/aptos_test.csv, split: null, dataset: aptos}
