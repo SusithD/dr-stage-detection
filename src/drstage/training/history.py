@@ -86,61 +86,59 @@ class HistoryWriter:
 
 
 class EarlyStopping:
-    """Early stopping monitor with patience and minimum delta."""
+    """Track the best score and stop when it has not improved meaningfully for ``patience`` epochs.
+
+    Any new best is reported (so the best checkpoint is always saved), but only gains larger than
+    ``min_delta`` reset the patience counter, so noise-level gains cannot prolong training.
+    """
 
     def __init__(self, patience: int, min_delta: float = 0.0, mode: str = "max"):
         """Initialize early stopping.
 
         Args:
-            patience: Number of epochs with no improvement before stopping.
-            min_delta: Minimum change to qualify as improvement.
-            mode: 'max' for maximization (e.g., accuracy), 'min' for minimization (e.g., loss).
+            patience: Epochs without a meaningful improvement before stopping.
+            min_delta: Minimum gain that counts as a meaningful improvement.
+            mode: 'max' when higher is better, 'min' when lower is better.
         """
         self.patience = patience
         self.min_delta = min_delta
         self.mode = mode
         self.counter = 0
-        self.best = float("-inf") if mode == "max" else float("inf")
+        worst = float("-inf") if mode == "max" else float("inf")
+        self.best = worst
+        self.reference = worst
         self.should_stop = False
 
+    def _better(self, value: float, than: float, margin: float) -> bool:
+        return value > than + margin if self.mode == "max" else value < than - margin
+
     def step(self, value: float) -> bool:
-        """Check if there was an improvement.
+        """Record one epoch's score.
 
         Args:
             value: Current metric value.
 
         Returns:
-            True if improved, False if no improvement (counter incremented).
+            True if the value is a new best.
         """
-        if self.mode == "max":
-            improved = value > self.best + self.min_delta
-        else:
-            improved = value < self.best - self.min_delta
-
-        if improved:
-            self.best = value
+        if self._better(value, self.reference, self.min_delta):
+            self.reference = value
             self.counter = 0
-            return True
         else:
             self.counter += 1
-            if self.counter >= self.patience:
-                self.should_stop = True
-            return False
+            self.should_stop = self.counter >= self.patience
+        is_best = self._better(value, self.best, 0.0)
+        if is_best:
+            self.best = value
+        return is_best
 
     def state_dict(self) -> dict:
-        """Get state for checkpointing.
-
-        Returns:
-            State dict with best, counter.
-        """
-        return {"best": self.best, "counter": self.counter}
+        """State for checkpointing."""
+        return {"best": self.best, "reference": self.reference, "counter": self.counter}
 
     def load_state_dict(self, state: dict) -> None:
-        """Load state from checkpoint.
-
-        Args:
-            state: State dict from checkpoint.
-        """
+        """Restore state from a checkpoint."""
         self.best = state["best"]
+        self.reference = state.get("reference", state["best"])
         self.counter = state["counter"]
         self.should_stop = self.counter >= self.patience

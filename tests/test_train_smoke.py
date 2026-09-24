@@ -366,3 +366,16 @@ class TestTrainSmoke:
 
         with pytest.raises(KeyError):
             load_train_config(config_path, ["model.unknown_key=value"])
+
+
+def test_early_stopping_saves_small_gains_but_stops_on_plateau():
+    """Every new best is reported, but only gains above min_delta reset patience."""
+    from drstage.training.history import EarlyStopping
+
+    es = EarlyStopping(patience=2, min_delta=0.01)
+    assert es.step(0.80)
+    assert es.step(0.805)
+    assert not es.should_stop
+    assert es.step(0.808)
+    assert es.should_stop
+    assert es.best == 0.808
