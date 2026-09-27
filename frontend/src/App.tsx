@@ -22,6 +22,13 @@ function initialTheme(): Theme {
   return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
 }
 
+function initialView(): ViewMode {
+  const requested = new URLSearchParams(window.location.search).get('view')
+  return requested === 'enhanced' || requested === 'compare' || requested === 'heatmap'
+    ? requested
+    : 'original'
+}
+
 export default function App() {
   const [health, setHealth] = useState<HealthResponse | null>(null)
   const [serverError, setServerError] = useState<string | null>(null)
@@ -29,7 +36,7 @@ export default function App() {
   const [patientRef, setPatientRef] = useState('')
   const [eyes, setEyes] = useState<Record<EyeSide, EyeCase | null>>(EMPTY_VISIT)
   const [active, setActive] = useState<EyeSide>('right')
-  const [view, setView] = useState<ViewMode>('original')
+  const [view, setView] = useState<ViewMode>(initialView)
   const [opacity, setOpacity] = useState(0.55)
   const [loupe, setLoupe] = useState(false)
   const [theme, setTheme] = useState<Theme>(initialTheme)
@@ -40,6 +47,7 @@ export default function App() {
     api.health().then(setHealth).catch((e: Error) => setServerError(e.message))
     api.samples().then(setSamples).catch(() => setSamples([]))
   }, [])
+
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme
@@ -83,6 +91,23 @@ export default function App() {
     },
     [patch],
   )
+
+  // ?right=<sample id>&left=<sample id>&view=heatmap preloads a visit, e.g. for demos
+  const preloaded = useRef(false)
+  useEffect(() => {
+    if (preloaded.current || samples.length === 0) return
+    preloaded.current = true
+    const params = new URLSearchParams(window.location.search)
+    for (const side of ['left', 'right'] as EyeSide[]) {
+      const sample = samples.find((s) => s.id === params.get(side))
+      if (sample) {
+        api
+          .sampleImage(sample.id)
+          .then((blob) => analyse(side, blob, `${sample.id}.jpg`, sample))
+          .catch(() => undefined)
+      }
+    }
+  }, [samples, analyse])
 
   const onSample = async (sample: Sample) => {
     const side = active

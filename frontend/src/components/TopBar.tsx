@@ -75,7 +75,16 @@ export function TopBar({
   )
 }
 
+const DISPLAY_NAMES: Record<string, string> = {
+  convnext_base: 'ConvNeXt-Base',
+  convnext_tiny: 'ConvNeXt-Tiny',
+  tf_efficientnet_b5: 'EfficientNet-B5',
+  efficientnet_b0: 'EfficientNet-B0',
+  resnet50: 'ResNet50',
+}
+
 function shortName(name?: string): string {
   if (!name) return 'Model'
-  return name.split('.')[0].replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+  const arch = name.split('.')[0]
+  return DISPLAY_NAMES[arch] ?? arch.replace(/_/g, ' ')
 }

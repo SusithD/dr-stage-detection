@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import {
   asGrade,
   finalGrade,
@@ -181,12 +181,6 @@ function EyeFindings({ eye, onReview }: { eye: EyeCase; onReview: (r: ClinicianR
 }
 
 function Ladder({ probs, grade, muted }: { probs: number[]; grade: Grade; muted: boolean }) {
-  const [shown, setShown] = useState(false)
-  useEffect(() => {
-    const frame = requestAnimationFrame(() => setShown(true))
-    return () => cancelAnimationFrame(frame)
-  }, [])
-
   return (
     <ol className="ladder" data-muted={muted || undefined} aria-label="Probability of each grade">
       {[...GRADE_LIST].reverse().map((g) => {
@@ -201,7 +195,7 @@ function Ladder({ probs, grade, muted }: { probs: number[]; grade: Grade; muted:
             <span className="rung-track">
               <span
                 className="rung-fill"
-                style={{ width: shown ? `${Math.max(p * 100, 0.5)}%` : 0, background: GRADES[g].color }}
+                style={{ width: `${Math.max(p * 100, 0.5)}%`, background: GRADES[g].color }}
               />
             </span>
             <span className="rung-pct">{Math.round(p * 100)}%</span>

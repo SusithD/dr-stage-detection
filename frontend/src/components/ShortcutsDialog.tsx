@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react'
 import { CloseIcon } from './Icons'
 
 const SHORTCUTS: [string, string][] = [
-  ['1 2 3 4', 'Original, enhanced, compare and heatmap views'],
+  ['1 2 3 4', 'Original, model input, compare and heatmap views'],
   ['+  −', 'Zoom in and out'],
   ['0', 'Fit the photograph to the viewer'],
   ['L', 'Magnifier on or off'],

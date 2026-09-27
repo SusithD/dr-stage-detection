@@ -19,7 +19,7 @@ export const GRADE_LIST: Grade[] = [0, 1, 2, 3, 4]
 export const PREPROCESSING_NAMES: Record<string, string> = {
   ben_graham: 'Ben Graham local colour normalisation',
   clahe_l: 'CLAHE on lightness',
-  none: 'None',
+  none: 'Circle crop only',
 }
 
 export const OVERRIDE_REASONS = [

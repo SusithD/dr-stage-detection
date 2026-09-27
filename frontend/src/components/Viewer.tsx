@@ -5,7 +5,7 @@ import { FitIcon, LoupeIcon, UploadIcon } from './Icons'
 
 const VIEWS: { value: ViewMode; label: string; key: string }[] = [
   { value: 'original', label: 'Original', key: '1' },
-  { value: 'enhanced', label: 'Enhanced', key: '2' },
+  { value: 'enhanced', label: 'Model input', key: '2' },
   { value: 'compare', label: 'Compare', key: '3' },
   { value: 'heatmap', label: 'Heatmap', key: '4' },
 ]
@@ -245,7 +245,7 @@ export function Viewer({
                 <img
                   className="layer"
                   src={images.enhanced}
-                  alt="Enhanced photograph"
+                  alt="Photograph as seen by the model"
                   draggable={false}
                   style={{ clipPath: `inset(0 0 0 ${split}%)` }}
                 />
@@ -255,7 +255,7 @@ export function Viewer({
                 <img
                   className="layer"
                   src={base}
-                  alt={view === 'enhanced' ? 'Enhanced photograph as seen by the model' : 'Fundus photograph'}
+                  alt={view === 'enhanced' ? 'Photograph as seen by the model' : 'Fundus photograph'}
                   draggable={false}
                   data-dim={eye?.status === 'analysing' || undefined}
                 />
@@ -290,7 +290,7 @@ export function Viewer({
               aria-label={`Comparison divider at ${Math.round(split)}%. Use arrow keys to move.`}
             />
             <span className="split-tag split-tag-left">Original</span>
-            <span className="split-tag split-tag-right">Enhanced</span>
+            <span className="split-tag split-tag-right">Model input</span>
           </div>
         )}
 

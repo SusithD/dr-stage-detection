@@ -991,7 +991,8 @@ textarea.input {
   display: block;
   height: 100%;
   border-radius: 4px;
-  transition: width 700ms var(--ease);
+  transform-origin: left center;
+  animation: grow 700ms var(--ease);
 }
 
 .rung-pct {
@@ -1194,6 +1195,12 @@ kbd {
   }
   to {
     background-position: 0 -40%;
+  }
+}
+
+@keyframes grow {
+  from {
+    transform: scaleX(0);
   }
 }
 
