@@ -1,4 +1,4 @@
-"""Checkpoint saving and loading utilities."""
+"""Atomic checkpoint writes, loading with a format check, and the inference bundle layout."""
 
 import logging
 from pathlib import Path
@@ -11,11 +11,8 @@ CHECKPOINT_FORMAT = 1
 
 
 def save_checkpoint(path: Path, state: dict) -> None:
-    """Save checkpoint to file atomically (write to tmp then rename).
-
-    Args:
-        path: Path to save checkpoint.
-        state: Checkpoint state dict.
+    """Save state atomically: write to a .tmp beside the target, then rename over it. A crash
+    mid-write leaves the old checkpoint intact.
     """
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -28,18 +25,7 @@ def save_checkpoint(path: Path, state: dict) -> None:
 
 
 def load_checkpoint(path: Path, map_location: str = "cpu") -> dict:
-    """Load checkpoint from file.
-
-    Args:
-        path: Path to checkpoint file.
-        map_location: Device mapping (default cpu).
-
-    Returns:
-        Checkpoint state dict.
-
-    Raises:
-        AssertionError: If checkpoint format version does not match.
-    """
+    """Load a checkpoint and refuse it unless format_version matches CHECKPOINT_FORMAT."""
     state = torch.load(path, map_location=map_location)
 
     assert state.get("format_version") == CHECKPOINT_FORMAT, (
@@ -52,20 +38,10 @@ def load_checkpoint(path: Path, map_location: str = "cpu") -> dict:
 
 
 def resolve_checkpoint(spec: str | Path) -> Path:
-    """Resolve checkpoint path from various specs.
+    """Turn a file, run dir or experiment dir into a concrete best.pt path.
 
-    - file path -> itself
-    - run dir (contains checkpoints/) -> checkpoints/best.pt
-    - exp dir (runs/<exp>) -> newest timestamp's best.pt
-
-    Args:
-        spec: Checkpoint specification (file, run dir, or exp dir).
-
-    Returns:
-        Path to checkpoint file.
-
-    Raises:
-        FileNotFoundError: If checkpoint cannot be resolved.
+    A run dir is anything holding checkpoints/best.pt; an experiment dir (runs/<exp>) picks
+    the newest timestamped run, which works because run folders sort by name.
     """
     spec = Path(spec)
 
@@ -96,18 +72,11 @@ def build_inference_bundle(
     preprocess_cfg: dict,
     git_commit: str,
 ) -> dict:
-    """Build inference bundle for checkpoint (everything except weights).
+    """Everything the predictor needs to rebuild and run the model, minus the weights.
 
-    Args:
-        cfg: Training config.
-        model: DRModel instance.
-        mean: Normalization mean (3 floats).
-        std: Normalization std (3 floats).
-        preprocess_cfg: Preprocessing config from data.yaml.
-        git_commit: Git commit hash.
-
-    Returns:
-        Dict with bundle metadata for checkpoint.
+    The preprocess block drops the 'methods' catalogue and pins the method and cache size
+    actually used, so inference can reproduce the training input pipeline from the
+    checkpoint alone.
     """
     model_cfg = cfg["model"]
     data_cfg = cfg["data"]

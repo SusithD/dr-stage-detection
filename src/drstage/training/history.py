@@ -1,4 +1,4 @@
-"""Training history tracking and early stopping."""
+"""Per-epoch history written to disk, and the early-stopping rule used in stage 2."""
 
 import json
 import logging
@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class EpochRecord:
-    """Record of metrics for one training epoch."""
+    """One row of history.csv: losses, validation metrics, LRs and bookkeeping for an epoch."""
 
     epoch: int
     stage: int
@@ -30,25 +30,16 @@ class EpochRecord:
 
 
 class HistoryWriter:
-    """Write training history to CSV and JSON each epoch."""
+    """Rewrite history.csv and history.json every epoch so a killed run still has a log."""
 
     def __init__(self, run_dir: Path):
-        """Initialize history writer.
-
-        Args:
-            run_dir: Run directory path.
-        """
         self.run_dir = Path(run_dir)
         self.csv_path = self.run_dir / "history.csv"
         self.json_path = self.run_dir / "history.json"
         self.records = []
 
     def append(self, record: EpochRecord) -> None:
-        """Append epoch record and write to CSV/JSON.
-
-        Args:
-            record: EpochRecord instance.
-        """
+        """Add one epoch and rewrite both files from scratch."""
         self.records.append(record)
 
         df = pd.DataFrame([asdict(r) for r in self.records])
@@ -60,11 +51,7 @@ class HistoryWriter:
         logger.debug(f"Wrote history: {len(self.records)} epochs")
 
     def load_from_checkpoint(self, history_data: list[dict]) -> None:
-        """Load history from checkpoint (for resume).
-
-        Args:
-            history_data: List of epoch dicts from checkpoint.
-        """
+        """Rebuild the record list from the history stored in last.pt when resuming."""
         self.records = [
             EpochRecord(
                 epoch=r["epoch"],
@@ -93,11 +80,11 @@ class EarlyStopping:
     """
 
     def __init__(self, patience: int, min_delta: float = 0.0, mode: str = "max"):
-        """Initialize early stopping.
+        """Start with no best and a zeroed patience counter.
 
         Args:
-            patience: Epochs without a meaningful improvement before stopping.
-            min_delta: Minimum gain that counts as a meaningful improvement.
+            patience: Epochs without a gain above min_delta before stopping.
+            min_delta: Smallest gain that resets the patience counter.
             mode: 'max' when higher is better, 'min' when lower is better.
         """
         self.patience = patience
@@ -114,13 +101,10 @@ class EarlyStopping:
         return value > than + margin if self.mode == "max" else value < than - margin
 
     def step(self, value: float) -> bool:
-        """Record one epoch's score.
+        """Record one epoch's score and return True if it is a new best.
 
-        Args:
-            value: Current metric value.
-
-        Returns:
-            True if the value is a new best.
+        A best that beats the old one by less than min_delta is still reported (and saved by
+        the trainer) but does not reset patience, so noise cannot keep a plateaued run alive.
         """
         if self._better(value, self.reference, self.min_delta):
             self.reference = value
@@ -138,7 +122,7 @@ class EarlyStopping:
         return {"best": self.best, "reference": self.reference, "counter": self.counter}
 
     def load_state_dict(self, state: dict) -> None:
-        """Restore state from a checkpoint."""
+        """Restore from a checkpoint; older ones without 'reference' fall back to 'best'."""
         self.best = state["best"]
         self.reference = state.get("reference", state["best"])
         self.counter = state["counter"]

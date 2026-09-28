@@ -1,4 +1,4 @@
-"""Automatic mixed precision handling with device-aware policy."""
+"""Autocast policy per device: MPS runs without a GradScaler, CUDA with one, CPU stays fp32."""
 
 import logging
 from contextlib import contextmanager
@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class AmpPolicy:
-    """AMP policy configuration."""
+    """What autocast should do on this device, and whether a GradScaler is involved."""
 
     enabled: bool
     dtype: torch.dtype | None
@@ -20,19 +20,11 @@ class AmpPolicy:
 
 
 def resolve_amp(device: torch.device, cfg_amp: dict) -> AmpPolicy:
-    """Resolve AMP policy based on device and config.
+    """Decide the autocast dtype and scaler use from the device and the amp config.
 
-    According to spec amendment:
-    - MPS: float16 without GradScaler
-    - CUDA: float16 (or configured) with GradScaler
-    - CPU: disabled
-
-    Args:
-        device: torch.device object.
-        cfg_amp: Config dict with key 'dtype' (auto, float16, bfloat16, or off).
-
-    Returns:
-        AmpPolicy instance.
+    MPS runs autocast without a GradScaler and leans on the non-finite guard in
+    AmpContext instead. 'auto' and anything unrecognised resolve to float16; 'off' or a
+    CPU device disables autocast entirely.
     """
     dtype_cfg = cfg_amp.get("dtype", "auto")
 
@@ -68,20 +60,16 @@ def resolve_amp(device: torch.device, cfg_amp: dict) -> AmpPolicy:
 
 
 class AmpContext:
-    """Context manager for AMP training with device-aware GradScaler."""
+    """Autocast, backward and step under one AMP policy, with the non-finite guard."""
 
     def __init__(self, policy: AmpPolicy):
-        """Initialize AMP context.
-
-        Args:
-            policy: AmpPolicy instance.
-        """
+        """Only builds a GradScaler when the policy asks for one (CUDA)."""
         self.policy = policy
         self.scaler = torch.amp.GradScaler("cuda") if policy.use_scaler else None
 
     @contextmanager
     def autocast(self):
-        """Context manager for autocast during forward pass."""
+        """Autocast for the forward pass; a no-op when AMP is disabled."""
         if self.policy.enabled:
             with torch.autocast(device_type=self.policy.device_type, dtype=self.policy.dtype):
                 yield
@@ -100,16 +88,11 @@ class AmpContext:
         return True
 
     def step(self, optimizer: torch.optim.Optimizer, params, clip_norm: float, ok: bool) -> bool:
-        """Clip and apply accumulated gradients, or discard them when the window was not finite.
+        """Clip and apply the accumulated gradients, or throw them away if the window went bad.
 
-        Args:
-            optimizer: Optimizer to step.
-            params: Parameters whose gradients are clipped.
-            clip_norm: Maximum gradient norm.
-            ok: False if any micro-batch in the window had a non-finite loss.
-
-        Returns:
-            True if the optimizer stepped, False if the update was skipped.
+        ok is False when any micro-batch in the window had a non-finite loss; a non-finite
+        clipped norm also skips the update. Gradients are zeroed either way, and the scaler
+        still updates so it can back off its scale. Returns True only if the step happened.
         """
         if ok:
             if self.scaler:

@@ -1,4 +1,4 @@
-"""Classification heads for CORN and CE loss."""
+"""Classification heads: CORN ordinal (K-1 binary tasks) and plain cross-entropy."""
 
 from abc import ABC, abstractmethod
 
@@ -8,48 +8,28 @@ from torch import LongTensor, Tensor
 
 
 class Head(nn.Module, ABC):
-    """Abstract base class for classification heads."""
+    """Interface every head implements: a forward to logits and a predict that decodes them."""
 
     num_classes: int
     out_dim: int
 
     @abstractmethod
     def forward(self, features: Tensor) -> Tensor:
-        """Compute logits from features.
-
-        Args:
-            features: [N, in_features] feature tensor.
-
-        Returns:
-            Logits tensor [N, out_dim].
-        """
+        """Map [N, in_features] features to [N, out_dim] logits."""
 
     @abstractmethod
     def predict(self, logits: Tensor) -> tuple[LongTensor, Tensor, Tensor]:
-        """Decode logits to grade, prob_dr, and class probabilities.
+        """Decode [N, out_dim] logits into (grade [N], prob_dr [N], class_probs [N, K]).
 
-        Args:
-            logits: [N, out_dim] logits tensor.
-
-        Returns:
-            Tuple of (grade [N], prob_dr [N], class_probs [N, num_classes]).
+        prob_dr is the probability of any DR, i.e. grade >= 1, and feeds the
+        binary metrics.
         """
 
 
 class CornHead(Head):
-    """Cumulative Output Regression Network (CORN) head.
-
-    out_dim = num_classes - 1 (K-1 binary classifiers).
-    """
+    """CORN ordinal head: K-1 binary logits, one per 'is the grade above k' question."""
 
     def __init__(self, in_features: int, num_classes: int, dropout: float = 0.0):
-        """Initialize CORN head.
-
-        Args:
-            in_features: Input feature dimension.
-            num_classes: Number of classes (K).
-            dropout: Dropout rate.
-        """
         super().__init__()
         self.num_classes = num_classes
         self.out_dim = num_classes - 1
@@ -58,28 +38,16 @@ class CornHead(Head):
         self.linear = nn.Linear(in_features, self.out_dim)
 
     def forward(self, features: Tensor) -> Tensor:
-        """Compute CORN logits.
-
-        Args:
-            features: [N, in_features] feature tensor.
-
-        Returns:
-            [N, num_classes-1] logits.
-        """
+        """Dropout then a single linear layer to [N, K-1] logits."""
         return self.linear(self.dropout(features))
 
     def predict(self, logits: Tensor) -> tuple[LongTensor, Tensor, Tensor]:
-        """Decode CORN logits.
+        """Turn CORN logits into a grade and class probabilities.
 
-        Computes P(y>k) = cumprod(sigmoid(logits)), then derives class probs.
-
-        Args:
-            logits: [N, K-1] logits.
-
-        Returns:
-            - grade: [N] predicted grades
-            - prob_dr: [N] probability of any DR (referable)
-            - class_probs: [N, K] class probabilities
+        P(y > k) is the running product of the sigmoids, so it can only fall with
+        k; the grade is how many of those exceed 0.5 and class k gets P(y > k-1) -
+        P(y > k). Cast to float32 first so the cumulative product is not done in
+        half precision.
         """
         logits = logits.float()
         cum = torch.cumprod(torch.sigmoid(logits), dim=1)
@@ -102,19 +70,9 @@ class CornHead(Head):
 
 
 class CeHead(Head):
-    """Cross-entropy head.
-
-    out_dim = num_classes (K).
-    """
+    """Plain softmax head with K logits."""
 
     def __init__(self, in_features: int, num_classes: int, dropout: float = 0.0):
-        """Initialize CE head.
-
-        Args:
-            in_features: Input feature dimension.
-            num_classes: Number of classes (K).
-            dropout: Dropout rate.
-        """
         super().__init__()
         self.num_classes = num_classes
         self.out_dim = num_classes
@@ -123,27 +81,11 @@ class CeHead(Head):
         self.linear = nn.Linear(in_features, num_classes)
 
     def forward(self, features: Tensor) -> Tensor:
-        """Compute CE logits.
-
-        Args:
-            features: [N, in_features] feature tensor.
-
-        Returns:
-            [N, num_classes] logits.
-        """
+        """Dropout then a single linear layer to [N, K] logits."""
         return self.linear(self.dropout(features))
 
     def predict(self, logits: Tensor) -> tuple[LongTensor, Tensor, Tensor]:
-        """Decode CE logits via softmax.
-
-        Args:
-            logits: [N, K] logits.
-
-        Returns:
-            - grade: [N] predicted grades (argmax)
-            - prob_dr: [N] probability of any DR (1 - softmax[:,0])
-            - class_probs: [N, K] softmax probabilities
-        """
+        """Softmax, argmax for the grade, and 1 - P(class 0) as the probability of any DR."""
         class_probs = torch.softmax(logits, dim=1)
         grade = torch.argmax(class_probs, dim=1).long()
         prob_dr = 1.0 - class_probs[:, 0]
@@ -152,20 +94,7 @@ class CeHead(Head):
 
 
 def build_head(kind: str, in_features: int, num_classes: int, dropout: float = 0.0) -> Head:
-    """Build a head of the specified kind.
-
-    Args:
-        kind: Head kind ('corn' or 'ce').
-        in_features: Input feature dimension.
-        num_classes: Number of classes.
-        dropout: Dropout rate.
-
-    Returns:
-        Head instance.
-
-    Raises:
-        ValueError: If kind is not 'corn' or 'ce'.
-    """
+    """Pick a head by name, 'corn' or 'ce'."""
     if kind == "corn":
         return CornHead(in_features, num_classes, dropout)
     elif kind == "ce":

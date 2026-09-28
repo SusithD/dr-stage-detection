@@ -1,4 +1,4 @@
-"""Main trainer class for two-stage model training."""
+"""Two-stage training loop, from head-only warm-up to full fine-tuning with EMA."""
 
 import json
 import logging
@@ -38,16 +38,16 @@ logger = logging.getLogger(__name__)
 
 
 class Trainer:
-    """Two-stage model trainer with EMA and early stopping."""
+    """Run the two-stage schedule and own everything it touches: model, loaders, AMP, EMA.
+
+    Stage 1 trains the head on a frozen backbone for warmup_epochs. Stage 2 unfreezes it
+    with a lower backbone LR, starts the cosine schedule, resets the EMA and turns on
+    early stopping on validation QWK. Only stage 2 can produce a best checkpoint, and when
+    EMA is enabled the EMA weights are what get validated and saved.
+    """
 
     def __init__(self, cfg: dict, run_dir: Path, device: torch.device):
-        """Initialize trainer.
-
-        Args:
-            cfg: Training config dict.
-            run_dir: Run directory path.
-            device: torch.device instance.
-        """
+        """Build model, loaders, loss, AMP and EMA up front; optimizers are created per stage."""
         self.cfg = cfg
         self.run_dir = Path(run_dir)
         self.device = device
@@ -73,6 +73,7 @@ class Trainer:
         weights_with_sampler = cfg.get("imbalance", {}).get("weights_with_sampler", False)
 
         class_weights = None
+        # class weights are skipped when the sampler already balances, unless explicitly asked for
         if class_weight_power > 0 and (not sampler_enabled or weights_with_sampler):
             class_weights = class_weights_from_counts(class_counts, class_weight_power)
             class_weights = class_weights.to(device)
@@ -121,14 +122,11 @@ class Trainer:
         self.started_at = datetime.now().isoformat()
 
     def fit(self, resume_from: Path | None = None) -> dict:
-        """Fit model over epochs with two-stage training.
+        """Run the epoch loop, moving to stage 2 after warmup_epochs, and return the summary.
 
-        Args:
-            resume_from: Path to last.pt checkpoint to resume from.
-
-        Returns:
-            Summary dict with keys: best_epoch, best_val_qwk, best_metrics, epochs_run,
-                stopped_early, total_time_s, skipped_steps.
+        Resume expects last.pt. The returned dict also lands in summary.json; keys are
+        best_epoch, best_val_qwk, best_metrics, epochs_run, stopped_early, total_time_s,
+        skipped_steps.
         """
         self.start_time = time.time()
 
@@ -231,7 +229,10 @@ class Trainer:
         return summary
 
     def _setup_stage1(self) -> None:
-        """Setup stage 1: frozen backbone, head-only training."""
+        """Stage 1: freeze the backbone and optimize only the head, with no weight decay.
+
+        The head LR is backbone_lr x head_lr_mult, the same as it will be in stage 2.
+        """
         logger.info("Setting up stage 1: frozen backbone, head-only training")
 
         self.current_stage = 1
@@ -252,7 +253,12 @@ class Trainer:
         self.optimizer = build_optimizer(head_groups, self.cfg["optim"])
 
     def _setup_stage2(self) -> None:
-        """Setup stage 2: unfrozen backbone, discriminative learning rates."""
+        """Stage 2: unfreeze the backbone, discriminative LRs, warm-up + cosine schedule.
+
+        Schedule length is counted in optimizer steps (micro-batches / accum_steps, rounded up)
+        over the remaining epochs. The EMA is reset to the current weights and early stopping
+        starts fresh here.
+        """
         logger.info("Setting up stage 2: unfrozen backbone, discriminative LRs")
 
         self.current_stage = 2
@@ -294,10 +300,13 @@ class Trainer:
     def _train_epoch(self, loader: DataLoader, epoch: int) -> tuple[float, int]:
         """Train one epoch, accumulating gradients over ``accum_steps`` micro-batches.
 
-        Returns:
-            (mean_loss, skipped_steps)
+        backward() runs on every micro-batch with the loss divided by accum_steps; the
+        optimizer steps at the end of each window and the whole window is dropped if any loss
+        in it was non-finite. The scheduler and EMA advance at every window end, even when
+        the step was skipped. Returns (mean loss over finite batches, skipped optimizer steps).
         """
         self.model.train()
+        # model.train() flips BN back to train mode, so re-freeze it every epoch in stage 1
         if self.freeze_bn_stats_stage1 and self.current_stage == 1:
             set_backbone_trainable(self.model, trainable=False, freeze_bn_stats=True)
 
@@ -351,10 +360,10 @@ class Trainer:
         return total_loss / max(n_seen, 1), skipped_steps
 
     def _validate(self, model: nn.Module, loader: DataLoader) -> tuple[float, dict, object]:
-        """Validate model and compute metrics.
+        """Evaluate on the loader under autocast and gather per-image predictions.
 
-        Returns:
-            (val_loss, metrics_dict, predictions_df)
+        Returns (mean val loss, metrics dict from compute_metrics, DataFrame of per-image
+        label/pred/prob_dr/p0..pK-1) - the frame becomes val_predictions.csv on a new best.
         """
         model.eval()
 
@@ -407,7 +416,10 @@ class Trainer:
         return val_loss, metrics, pred_df
 
     def _get_lrs(self) -> tuple[float, float]:
-        """Get current learning rates from optimizer param groups."""
+        """Current (backbone LR, head LR), read off the param group order set by param_groups.
+
+        Stage 1 has only the head group, so the backbone LR is reported as 0.
+        """
         lrs = [group["lr"] for group in self.optimizer.param_groups]
 
         if self.current_stage == 1:
@@ -421,7 +433,10 @@ class Trainer:
         )
 
     def _save_best_checkpoint(self, model: nn.Module, metrics: dict) -> None:
-        """Save best checkpoint (EMA weights + inference bundle, no optimizer)."""
+        """Write best.pt: the evaluated weights (EMA when enabled) plus the inference bundle.
+
+        Optimizer and resume state are left out on purpose; best.pt is for inference only.
+        """
         mean, std = normalization_stats(self.model.backbone)
 
         preprocess_cfg_path = Path(self.cfg["data"]["config"])
@@ -472,7 +487,7 @@ class Trainer:
         save_checkpoint(self.checkpoint_dir / "best.pt", state)
 
     def _save_last_checkpoint(self, epoch: int) -> None:
-        """Save last checkpoint (full resume state)."""
+        """Write last.pt with the full resume state, history included."""
         state = {
             "format_version": CHECKPOINT_FORMAT,
             "kind": "last",
@@ -516,7 +531,9 @@ class Trainer:
         save_checkpoint(self.checkpoint_dir / "last.pt", state)
 
     def _load_checkpoint(self, path: Path) -> None:
-        """Load checkpoint for resume."""
+        """Restore from last.pt. The stage setup is re-run first so the optimizer and scheduler
+        exist before their state dicts are loaded into them.
+        """
         from drstage.training.checkpoint import load_checkpoint
 
         state = load_checkpoint(path, map_location=str(self.device))
@@ -553,12 +570,12 @@ class Trainer:
         )
 
     def _save_summary(self, summary: dict) -> None:
-        """Save training summary JSON."""
+        """Dump the fit() summary to summary.json."""
         with open(self.run_dir / "summary.json", "w") as f:
             json.dump(summary, f, indent=2)
 
     def _save_config_and_metadata(self) -> None:
-        """Save config and metadata at training start."""
+        """Write config.yaml and meta.json (git state, library versions, device, argv)."""
         import socket
 
         from drstage.utils.config import save_config

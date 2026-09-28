@@ -1,4 +1,4 @@
-"""Backbone creation and utilities for timm models."""
+"""Create timm backbones and expose their input mean/std and the Grad-CAM target layer."""
 
 import logging
 
@@ -9,15 +9,10 @@ logger = logging.getLogger(__name__)
 
 
 def create_backbone(name: str, pretrained: bool, drop_path_rate: float) -> tuple[nn.Module, int]:
-    """Create timm backbone with num_classes=0 and return feature dimension.
+    """Build a headless timm model and return it with its feature width.
 
-    Args:
-        name: Model name (e.g., 'convnext_base.fb_in22k_ft_in1k_384').
-        pretrained: Whether to load pretrained weights.
-        drop_path_rate: Stochastic depth rate.
-
-    Returns:
-        Tuple of (backbone module, feature dimension).
+    num_classes=0 makes timm return pooled features, so the head is bolted on
+    separately.
     """
     backbone = timm.create_model(
         name, pretrained=pretrained, num_classes=0, drop_path_rate=drop_path_rate
@@ -27,14 +22,7 @@ def create_backbone(name: str, pretrained: bool, drop_path_rate: float) -> tuple
 
 
 def normalization_stats(backbone: nn.Module) -> tuple[list[float], list[float]]:
-    """Get mean and std from backbone.pretrained_cfg or ImageNet defaults.
-
-    Args:
-        backbone: Backbone module.
-
-    Returns:
-        Tuple of (mean, std) as lists of 3 floats.
-    """
+    """Read the input mean/std from the timm pretrained config, falling back to ImageNet's."""
     if hasattr(backbone, "pretrained_cfg") and backbone.pretrained_cfg:
         cfg = backbone.pretrained_cfg
         if "mean" in cfg and "std" in cfg:
@@ -49,17 +37,9 @@ def normalization_stats(backbone: nn.Module) -> tuple[list[float], list[float]]:
 
 
 def cam_target_layer(backbone: nn.Module, name: str) -> nn.Module:
-    """Get target layer for Grad-CAM based on architecture.
-
-    Args:
-        backbone: Backbone module.
-        name: Model name (used for architecture detection).
-
-    Returns:
-        Target layer module.
-
-    Raises:
-        ValueError: If architecture is not supported.
+    """Pick the layer Grad-CAM should hook for each supported family. Unknown
+    families raise so a new backbone gets an explicit mapping instead of a
+    guessed layer.
     """
     if "convnext" in name.lower():
         return backbone.stages[-1]

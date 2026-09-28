@@ -1,4 +1,4 @@
-"""Training CLI entry point."""
+"""CLI for training: parse args, pick the run dir and device, then hand off to Trainer."""
 
 import argparse
 import json
@@ -20,14 +20,7 @@ logger = None
 
 
 def _get_device(device_str: str) -> torch.device:
-    """Resolve device string to torch.device.
-
-    Args:
-        device_str: Device spec ('auto', 'cuda', 'mps', 'cpu').
-
-    Returns:
-        torch.device instance.
-    """
+    """Resolve 'auto' to CUDA, then MPS, then CPU; other strings go straight to torch.device."""
     if device_str == "auto":
         if torch.cuda.is_available():
             return torch.device("cuda")
@@ -40,14 +33,7 @@ def _get_device(device_str: str) -> torch.device:
 
 
 def _create_run_dir(cfg: dict) -> Path:
-    """Create run directory with timestamp.
-
-    Args:
-        cfg: Training config.
-
-    Returns:
-        Path to run directory.
-    """
+    """Make runs_root/exp_name/<timestamp> and return it."""
     runs_root = Path(cfg.get("runs_root", "runs"))
     exp_name = cfg.get("exp_name", "base")
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
@@ -57,11 +43,10 @@ def _create_run_dir(cfg: dict) -> Path:
 
 
 def _save_metadata(run_dir: Path, cfg: dict) -> None:
-    """Save metadata about the training run.
+    """Write meta.json with git state, library versions and the launch command.
 
-    Args:
-        run_dir: Run directory path.
-        cfg: Training config.
+    git is run from three levels above the run dir, which is the repo root for the default
+    runs/<exp>/<timestamp> layout.
     """
     try:
         git_commit = subprocess.run(
@@ -111,13 +96,11 @@ def _save_metadata(run_dir: Path, cfg: dict) -> None:
 
 
 def main(argv=None) -> int:
-    """Main training CLI entry point.
+    """Parse arguments, set up the run directory and logger, and run training.
 
-    Args:
-        argv: Command-line arguments (default sys.argv[1:]).
-
-    Returns:
-        Exit code.
+    --resume takes either a run dir or a last.pt path and reuses that run's directory unless
+    --run-dir overrides it. The run dir is printed as the last line of stdout so shell
+    scripts can pick it up.
     """
     parser = argparse.ArgumentParser(description="Train DR stage detection model")
     parser.add_argument("--config", type=str, required=True, help="Path to training config YAML")

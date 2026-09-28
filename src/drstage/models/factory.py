@@ -1,4 +1,4 @@
-"""Model factory and utilities."""
+"""Assemble backbone and head into DRModel, plus backbone freezing and optimizer param groups."""
 
 import logging
 
@@ -12,60 +12,29 @@ logger = logging.getLogger(__name__)
 
 
 class DRModel(nn.Module):
-    """DR stage detection model combining backbone and head."""
+    """Backbone that produces pooled features, followed by a CORN or CE head."""
 
     def __init__(self, backbone: nn.Module, head: Head, num_features: int):
-        """Initialize DRModel.
-
-        Args:
-            backbone: Feature extraction backbone.
-            head: Classification head.
-            num_features: Number of features from backbone.
-        """
         super().__init__()
         self.backbone = backbone
         self.head = head
         self.num_features = num_features
 
     def forward(self, x: Tensor) -> Tensor:
-        """Forward pass.
-
-        Args:
-            x: [N, 3, H, W] image tensor.
-
-        Returns:
-            [N, out_dim] logits.
-        """
+        """[N, 3, H, W] images to [N, out_dim] logits."""
         features = self.backbone(x)
         logits = self.head(features)
         return logits
 
     def predict(self, logits: Tensor) -> tuple:
-        """Predict grades and probabilities.
-
-        Args:
-            logits: [N, out_dim] logits.
-
-        Returns:
-            Tuple of (grade, prob_dr, class_probs) from head.predict().
-        """
+        """Decode logits with the head; see Head.predict for the tuple layout."""
         return self.head.predict(logits)
 
 
 def build_model(model_cfg: dict, pretrained: bool = True) -> DRModel:
-    """Build a complete DR stage detection model.
+    """Build a DRModel from the model section of a training config.
 
-    Args:
-        model_cfg: Model config dict with keys:
-            - backbone: Model name
-            - head: 'corn' or 'ce'
-            - num_classes: Number of classes
-            - dropout: Dropout rate
-            - drop_path_rate: Stochastic depth rate
-        pretrained: Whether to use pretrained backbone weights.
-
-    Returns:
-        DRModel instance.
+    Reads backbone, head and num_classes, plus optional dropout and drop_path_rate.
     """
     backbone, num_features = create_backbone(
         model_cfg["backbone"],
@@ -84,12 +53,10 @@ def build_model(model_cfg: dict, pretrained: bool = True) -> DRModel:
 
 
 def set_backbone_trainable(model: DRModel, trainable: bool, freeze_bn_stats: bool = False) -> None:
-    """Set backbone trainability and optionally freeze BN stats.
+    """Toggle requires_grad on the backbone.
 
-    Args:
-        model: DRModel instance.
-        trainable: Whether to enable gradient computation.
-        freeze_bn_stats: If True and trainable=False, keep BN in eval() mode.
+    With freeze_bn_stats the frozen backbone is also put in eval() so any BatchNorm
+    layers keep their pretrained running stats during the head-only warm-up.
     """
     for param in model.backbone.parameters():
         param.requires_grad = trainable
@@ -101,26 +68,15 @@ def set_backbone_trainable(model: DRModel, trainable: bool, freeze_bn_stats: boo
 def param_groups(
     model: DRModel, backbone_lr: float, head_lr: float, weight_decay: float
 ) -> list[dict]:
-    """Create parameter groups for optimizer with differentiated learning rates.
+    """Split trainable params into four AdamW groups: backbone/head x decay/no-decay.
 
-    Creates 4 groups:
-    - backbone decay (requires_grad=True, ndim>1)
-    - backbone no-decay (requires_grad=True, ndim<=1 or bias)
-    - head decay (ndim>1)
-    - head no-decay (ndim<=1 or bias)
-
-    Args:
-        model: DRModel instance.
-        backbone_lr: Learning rate for backbone.
-        head_lr: Learning rate for head.
-        weight_decay: Weight decay coefficient.
-
-    Returns:
-        List of 4 parameter group dicts with 'params', 'lr', 'weight_decay', 'name'.
+    Only tensors with ndim > 1 that are not biases get weight decay, so norm scales
+    and biases are left alone. Frozen params are skipped. Group order matters:
+    Trainer._get_lrs reads 0-1 as backbone and 2-3 as head.
     """
 
     def needs_decay(param_name: str, param: nn.Parameter) -> bool:
-        """Check if parameter should have weight decay."""
+        """Weight decay only for matrices and conv kernels, never biases or norm params."""
         return param.ndim > 1 and not param_name.endswith("bias")
 
     backbone_decay = []

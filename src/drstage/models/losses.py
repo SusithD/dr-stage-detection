@@ -1,4 +1,4 @@
-"""Loss functions and class weighting."""
+"""CORN ordinal loss, weighted cross-entropy and the class weighting they share."""
 
 from collections.abc import Sequence
 
@@ -9,17 +9,9 @@ from torch import LongTensor, Tensor
 
 
 def class_weights_from_counts(counts: Sequence[int], power: float) -> Tensor:
-    """Compute class weights from label counts.
+    """Inverse-frequency class weights, (N / (K * n_c)) ** power, rescaled to mean 1.
 
-    w_c = (N / (K * n_c)) ** power, then rescaled to mean 1.
-    power=0 gives all ones.
-
-    Args:
-        counts: Sequence of per-class sample counts.
-        power: Power for weighting (0 disables).
-
-    Returns:
-        [K] weight tensor.
+    power=0.5 is the square-root weighting used by default; power=0 turns weighting off.
     """
     counts = torch.tensor(counts, dtype=torch.float32)
     num_classes = len(counts)
@@ -40,23 +32,16 @@ def corn_loss(
     num_classes: int,
     sample_weights: Tensor | None = None,
 ) -> Tensor:
-    """CORN loss with vectorised masking.
+    """CORN loss: K-1 binary cross-entropies over conditional subsets, vectorised with a mask.
 
-    For each binary task k in 0..K-2:
-    - S_k = {i : y_i >= k} (conditional subset)
-    - binary_label = 1[y_i > k] for i in S_k
-    - loss_k = mean BCEWithLogits(logits[i,k], label) weighted by w_i
-
-    Logits outside S_k do not influence the loss.
+    Task k only sees samples with y >= k and asks whether y > k, so logits outside that
+    subset never touch the loss. Optional per-sample weights scale each term and the
+    normaliser. Runs in float32 regardless of autocast.
 
     Args:
-        logits: [N, K-1] model outputs.
-        targets: [N] class labels in 0..K-1.
-        num_classes: Number of classes (K).
-        sample_weights: [N] sample weights or None (treated as 1.0).
-
-    Returns:
-        Scalar loss.
+        logits: [N, K-1] raw head outputs.
+        targets: [N] integer grades in 0..K-1.
+        sample_weights: [N] per-sample weights, or None for uniform.
     """
     logits = logits.float()
     targets = targets.long()
@@ -76,15 +61,12 @@ def corn_loss(
 
 
 class CornLoss(nn.Module):
-    """CORN loss module with class weighting."""
+    """Module wrapper around corn_loss that looks up a per-sample weight from the class weights.
+
+    Weights are registered as a buffer so they follow the module across devices.
+    """
 
     def __init__(self, num_classes: int, class_weights: Tensor | None = None):
-        """Initialize CORN loss.
-
-        Args:
-            num_classes: Number of classes (K).
-            class_weights: [K] class weights or None.
-        """
         super().__init__()
         self.num_classes = num_classes
         if class_weights is not None:
@@ -93,15 +75,7 @@ class CornLoss(nn.Module):
             self.class_weights = None
 
     def forward(self, logits: Tensor, targets: LongTensor) -> Tensor:
-        """Compute CORN loss.
-
-        Args:
-            logits: [N, K-1] logits.
-            targets: [N] labels.
-
-        Returns:
-            Scalar loss.
-        """
+        """Index the class weights by target and hand everything to corn_loss."""
         sample_weights = None
         if self.class_weights is not None:
             sample_weights = self.class_weights[targets]
@@ -110,28 +84,14 @@ class CornLoss(nn.Module):
 
 
 class WeightedCrossEntropy(nn.Module):
-    """Weighted cross-entropy loss module."""
+    """nn.CrossEntropyLoss with optional class weights and label smoothing."""
 
     def __init__(self, class_weights: Tensor | None = None, label_smoothing: float = 0.0):
-        """Initialize weighted CE loss.
-
-        Args:
-            class_weights: [K] class weights or None.
-            label_smoothing: Label smoothing coefficient.
-        """
         super().__init__()
         self.ce_loss = nn.CrossEntropyLoss(weight=class_weights, label_smoothing=label_smoothing)
 
     def forward(self, logits: Tensor, targets: LongTensor) -> Tensor:
-        """Compute weighted CE loss.
-
-        Args:
-            logits: [N, K] logits.
-            targets: [N] labels.
-
-        Returns:
-            Scalar loss.
-        """
+        """Mean weighted cross-entropy over the batch."""
         return self.ce_loss(logits, targets)
 
 
@@ -141,20 +101,7 @@ def build_criterion(
     num_classes: int,
     label_smoothing: float,
 ) -> nn.Module:
-    """Build loss criterion.
-
-    Args:
-        head: Head kind ('corn' or 'ce').
-        class_weights: [K] class weights or None.
-        num_classes: Number of classes.
-        label_smoothing: Label smoothing (CE only).
-
-    Returns:
-        Loss module.
-
-    Raises:
-        ValueError: If head is not 'corn' or 'ce'.
-    """
+    """Pick the loss matching the head kind. label_smoothing only applies to the CE path."""
     if head == "corn":
         return CornLoss(num_classes, class_weights)
     elif head == "ce":

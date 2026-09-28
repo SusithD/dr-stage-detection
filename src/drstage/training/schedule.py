@@ -1,4 +1,4 @@
-"""Optimizer and learning rate scheduler for two-stage training."""
+"""AdamW for both stages and the linear warm-up + cosine LR schedule used in stage 2."""
 
 import logging
 import math
@@ -11,15 +11,7 @@ logger = logging.getLogger(__name__)
 
 
 def build_optimizer(groups: list[dict], cfg_optim: dict) -> torch.optim.AdamW:
-    """Build AdamW optimizer with parameter groups.
-
-    Args:
-        groups: List of parameter group dicts with keys 'params', 'lr', 'weight_decay', 'name'.
-        cfg_optim: Optimizer config with keys 'betas', 'eps'.
-
-    Returns:
-        AdamW optimizer instance.
-    """
+    """AdamW over the given groups, with betas/eps from the optim config or torch defaults."""
     betas = tuple(cfg_optim.get("betas", [0.9, 0.999]))
     eps = cfg_optim.get("eps", 1.0e-8)
 
@@ -32,20 +24,10 @@ def build_scheduler(
     warmup_steps: int,
     min_lr_ratio: float,
 ) -> LambdaLR:
-    """Build per-step learning rate scheduler with linear warmup + cosine annealing.
+    """Per-step LambdaLR: linear warm-up to the base LR, then cosine down to min_lr_ratio of it.
 
-    lr(s) = base * s / warmup for s < warmup
-    lr(s) = base * (min + (1-min)*0.5*(1+cos(pi*t))) for s >= warmup,
-    where t = (s - warmup) / (total - warmup).
-
-    Args:
-        optimizer: Optimizer instance.
-        total_steps: Total number of optimizer steps.
-        warmup_steps: Number of warmup steps.
-        min_lr_ratio: Minimum LR as fraction of base LR (typically 0.01).
-
-    Returns:
-        LambdaLR scheduler.
+    Steps here are optimiser steps, not micro-batches, so the caller must divide by
+    accum_steps. If total_steps <= warmup_steps the post-warm-up LR just sits at the floor.
     """
 
     def lr_lambda(step: int) -> float:

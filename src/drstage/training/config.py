@@ -1,4 +1,4 @@
-"""Training config loading with base inheritance and override support."""
+"""Load training YAML configs with base-file inheritance and dotted key overrides."""
 
 import logging
 from collections.abc import Sequence
@@ -10,15 +10,7 @@ logger = logging.getLogger(__name__)
 
 
 def _deep_merge(base: dict, override: dict) -> dict:
-    """Deep merge override dict into base dict, overriding matching keys.
-
-    Args:
-        base: Base dictionary.
-        override: Override dictionary.
-
-    Returns:
-        Merged dictionary with override values taking precedence.
-    """
+    """Recursively merge override into a copy of base; override wins on clashes."""
     result = base.copy()
     for key, value in override.items():
         if key in result and isinstance(result[key], dict) and isinstance(value, dict):
@@ -29,21 +21,11 @@ def _deep_merge(base: dict, override: dict) -> dict:
 
 
 def load_train_config(path: str | Path, overrides: Sequence[str] = ()) -> dict:
-    """Load training config with base inheritance and override support.
+    """Load a training config, resolving its base chain and applying overrides.
 
-    If cfg has 'base' key, loads it recursively (relative to yaml's directory or repo cwd),
-    deep-merges child over base, then drops 'base' key. Applies overrides with strict
-    checking (KeyError on unknown keys).
-
-    Args:
-        path: Path to training YAML config.
-        overrides: List of "key.subkey=value" overrides (strict; raises KeyError if unknown).
-
-    Returns:
-        Resolved configuration dictionary without 'base' key.
-
-    Raises:
-        KeyError: If an override key does not exist in the resolved config.
+    A relative 'base' path is looked up next to the YAML first, then relative to the cwd.
+    Overrides are "key.sub=value" with the value parsed as YAML; an unknown key raises
+    KeyError instead of silently adding it. The merged config is validated before return.
     """
     path = Path(path)
 
@@ -84,14 +66,7 @@ def load_train_config(path: str | Path, overrides: Sequence[str] = ()) -> dict:
 
 
 def _validate_config(cfg: dict) -> None:
-    """Validate required config keys and values.
-
-    Args:
-        cfg: Configuration dictionary.
-
-    Raises:
-        ValueError: If validation fails.
-    """
+    """Reject a bad head or accum_steps and warn if img_size is above cache_size."""
     if cfg.get("model", {}).get("head") not in ("corn", "ce"):
         raise ValueError(
             f"model.head must be 'corn' or 'ce', got {cfg.get('model', {}).get('head')}"

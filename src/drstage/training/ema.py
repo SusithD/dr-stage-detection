@@ -7,13 +7,8 @@ from timm.utils.model_ema import ModelEmaV3
 def build_ema(model: torch.nn.Module, decay: float, device: torch.device) -> ModelEmaV3:
     """Create an EMA copy of the model whose decay warms up from 0 towards ``decay``.
 
-    Args:
-        model: Model to average.
-        decay: Maximum decay rate.
-        device: Device holding the EMA weights.
-
-    Returns:
-        ModelEmaV3 wrapper; the averaged model is ``ema.module``.
+    Warm-up keeps the decay low at first so the average follows the live weights instead of
+    clinging to the copy it started from. The averaged model lives at ``ema.module``.
     """
     return ModelEmaV3(model, decay=decay, use_warmup=True, device=device, exclude_buffers=False)
 
