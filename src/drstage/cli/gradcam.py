@@ -1,8 +1,6 @@
-"""Grad-CAM figures for a trained model on a held-out split.
+"""Visualise Grad-CAM heatmaps for the most confident correct and incorrect predictions per grade.
 
-Examples are chosen from an evaluation predictions file: for each true grade, the most confident
-correct and the most confident incorrect predictions. Heatmaps are produced by the same
-Predictor the web app uses, so figures match what a clinician would see.
+Heatmaps come from the same Predictor as the web app, so they show what a clinician would see.
 """
 
 import argparse
@@ -27,7 +25,7 @@ logger = logging.getLogger("drstage.gradcam")
 
 
 def select_examples(preds: pd.DataFrame, per_grade: int) -> pd.DataFrame:
-    """Most confident correct and incorrect predictions for each true grade."""
+    """Pick the most confident correct and incorrect predictions for each true grade."""
     probs = preds[[f"p{i}" for i in range(len(CLASS_NAMES))]].to_numpy()
     preds = preds.assign(confidence=probs.max(axis=1), correct=preds["label"] == preds["pred"])
     picked = (
@@ -39,7 +37,7 @@ def select_examples(preds: pd.DataFrame, per_grade: int) -> pd.DataFrame:
 
 
 def plot_pairs(items: list[dict], out: Path, title: str) -> None:
-    """Rows of (photograph, heatmap overlay) pairs, two pairs per row."""
+    """Display side-by-side image and Grad-CAM pairs in a grid."""
     pairs_per_row = 2
     rows = int(np.ceil(len(items) / pairs_per_row))
     fig, axes = plt.subplots(rows, pairs_per_row * 2, figsize=(pairs_per_row * 5, rows * 2.6))
@@ -62,7 +60,7 @@ def plot_pairs(items: list[dict], out: Path, title: str) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Write Grad-CAM figures and overlays for the selected test examples."""
+    """Generate Grad-CAM visualisations from a predictions CSV and save to disk."""
     parser = argparse.ArgumentParser(description="Grad-CAM figures for correct and incorrect cases")
     parser.add_argument("--checkpoint", required=True, help="checkpoint file or run directory")
     parser.add_argument("--predictions", required=True, help="predictions.csv from evaluate")

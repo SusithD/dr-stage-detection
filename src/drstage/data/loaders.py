@@ -94,7 +94,8 @@ def build_dataloaders(
     std: list[float],
     device: torch.device,
 ) -> tuple[DataLoader, DataLoader, dict]:
-    """Build train and validation dataloaders from config.
+    """Build train and val dataloaders from config, with optional weighted sampling for
+    class imbalance.
 
     Args:
         cfg: Config dict with keys: data.*, model.channels_last, imbalance.*

@@ -27,7 +27,7 @@ def seed_everything(seed: int, deterministic: bool = True) -> None:
 
 
 def worker_init_fn(worker_id: int) -> None:
-    """Worker initialization for DataLoader multiprocessing.
+    """Initialize seeds in DataLoader workers so each worker gets a different seed.
 
     Args:
         worker_id: Worker ID from DataLoader.

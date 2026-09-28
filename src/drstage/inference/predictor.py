@@ -1,4 +1,4 @@
-"""Predictor for real-time DR stage detection inference."""
+"""Single-model predictor wrapping a checkpoint, with preprocessing and optional CAM."""
 
 import logging
 from pathlib import Path
@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 
 class Predictor:
-    """Self-contained predictor for DR severity from checkpoint."""
+    """Load a checkpoint and grade fundus photographs with optional TTA and Grad-CAM."""
 
     def __init__(
         self,
@@ -27,15 +27,7 @@ class Predictor:
         tta: bool = True,
         cam_method: str = "gradcam",
     ):
-        """Initialize predictor.
-
-        Args:
-            model: DRModel instance, already loaded with weights.
-            bundle: Checkpoint bundle dict with model, preprocess, normalize, class_names.
-            device: torch.device to run on.
-            tta: Whether to apply TTA at inference time.
-            cam_method: CAM method ('gradcam' or 'gradcam++').
-        """
+        """Store the model, preprocessing config, and optionally build a CAM generator."""
         self.model = model.to(device).eval()
         self.device = device
         self.tta = tta
@@ -65,17 +57,9 @@ class Predictor:
             self.cam = None
 
     def preprocess(self, image_rgb: np.ndarray) -> tuple[np.ndarray, np.ndarray, torch.Tensor]:
-        """Apply the training-time preprocessing to one photograph.
+        """Crop, enhance and normalise the image, matching training-time preprocessing exactly.
 
-        Preprocessing runs at the cache size and is then resized to the model input size, exactly
-        as the cached training images were produced.
-
-        Args:
-            image_rgb: [H, W, 3] uint8 image.
-
-        Returns:
-            (original, enhanced, tensor): circle-cropped unenhanced image and the enhanced image,
-            both [img_size, img_size, 3] uint8, and the normalised [1, 3, S, S] model input.
+        Returns the original and preprocessed images alongside the normalised tensor.
         """
         crop = circle_crop(image_rgb, **self.preprocess_cfg["circle_crop"]).image
         original = resize_square(crop, self.img_size)
@@ -87,16 +71,7 @@ class Predictor:
         return original, enhanced, tensor
 
     def predict(self, image_rgb: np.ndarray, heatmap: bool = True) -> dict:
-        """Grade one fundus photograph.
-
-        Args:
-            image_rgb: [H, W, 3] uint8 RGB image.
-            heatmap: Whether to compute a Grad-CAM heatmap.
-
-        Returns:
-            Dict with grade, grade_name, prob_dr, class_probs (5 floats), heatmap ([S, S] float32
-            in [0, 1] or None), original and enhanced ([S, S, 3] uint8).
-        """
+        """Preprocess, infer and optionally generate a Grad-CAM heatmap for one image."""
         original, enhanced, x = self.preprocess(image_rgb)
 
         with torch.inference_mode():
@@ -126,11 +101,7 @@ class Predictor:
         }
 
     def info(self) -> dict:
-        """Return model information.
-
-        Returns:
-            Dict with name, head, image_size, preprocessing, checkpoint, device.
-        """
+        """Return metadata: backbone, head, image size, preprocessing method and device."""
         return {
             "name": self.bundle["model"]["backbone"],
             "head": self.head,
@@ -146,22 +117,7 @@ def load_predictor(
     device: str | torch.device = "cpu",
     tta: bool = True,
 ) -> Predictor:
-    """Load predictor from checkpoint file.
-
-    Loads model weights and builds Predictor without reading configs/ or data/.
-
-    Args:
-        checkpoint_path: Checkpoint file, run directory or experiment directory (newest run).
-        device: Device to load on ('auto', 'cpu', 'mps', 'cuda').
-        tta: Whether to apply TTA at inference.
-
-    Returns:
-        Predictor instance ready to call .predict().
-
-    Raises:
-        FileNotFoundError: If checkpoint does not exist.
-        KeyError: If checkpoint is missing required keys.
-    """
+    """Load model weights and configuration from a checkpoint file or directory."""
     checkpoint_path = resolve_checkpoint(checkpoint_path)
 
     if isinstance(device, str):

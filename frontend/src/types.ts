@@ -1,3 +1,8 @@
+/**
+ * Types for DR screening: ICDR grades 0-4, eye sides, viewer modes,
+ * API responses, clinician review, and image quality checks.
+ */
+
 export type Grade = 0 | 1 | 2 | 3 | 4
 export type EyeSide = 'right' | 'left'
 export type ViewMode = 'original' | 'enhanced' | 'compare' | 'heatmap'

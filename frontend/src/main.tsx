@@ -1,3 +1,6 @@
+/**
+ * App entry point: mount React root and apply design tokens CSS.
+ */
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import App from './App'

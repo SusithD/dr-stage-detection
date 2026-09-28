@@ -1,3 +1,6 @@
+/**
+ * SVG icons: status (ok/warn/fail), eye, upload, sun/moon theme, print, keyboard, magnifier, fit.
+ */
 import type { CheckStatus } from '../types'
 
 type IconProps = { className?: string }
@@ -12,6 +15,7 @@ const base = {
   'aria-hidden': true,
 }
 
+/** Status indicator: check (ok), triangle (warn), or X (fail). */
 export const StatusIcon = ({ status, className }: { status: CheckStatus } & IconProps) => (
   <svg {...base} className={`status-icon status-${status} ${className ?? ''}`}>
     {status === 'ok' && <path d="M5 10.5l3.2 3.2L15 6.8" />}

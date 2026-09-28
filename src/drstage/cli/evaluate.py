@@ -1,8 +1,6 @@
-"""Evaluate trained models and ensembles on held-out datasets.
+"""Run inference on test sets, compute metrics, generate report bundles and ensemble results.
 
-For every model and dataset the test set is predicted once per TTA setting; ensembles reuse those
-predictions. Each (model, dataset, TTA) combination gets a full report bundle, and all results are
-collected in ``comparison.csv``.
+All predictions are cached so ensembles can reuse them; each model/dataset/TTA gets its own report.
 """
 
 import argparse
@@ -31,7 +29,7 @@ logger = logging.getLogger("drstage.evaluate")
 
 
 def resolve_device(device: str) -> torch.device:
-    """Resolve 'auto' to the best available device."""
+    """Expand 'auto' to cuda, mps or cpu based on what's available."""
     if device == "auto":
         if torch.cuda.is_available():
             return torch.device("cuda")
@@ -48,11 +46,7 @@ def predict_dataset(
     device: torch.device,
     tta: bool,
 ) -> tuple[Predictions, Path]:
-    """Predict one dataset with one model, reading its preprocessing from the checkpoint.
-
-    Returns:
-        (predictions, cache_root) where cache_root holds the images the model saw.
-    """
+    """Run inference on a dataset using the model's original preprocessing config."""
     cache_root = (
         Path(cfg["processed_root"])
         / "images"
@@ -79,7 +73,7 @@ def predict_dataset(
 
 
 def summarise(model: str, dataset: str, tta: bool, metrics: dict) -> dict:
-    """One comparison.csv row."""
+    """Format metrics as a single row for the comparison table."""
     return {
         "model": model,
         "dataset": dataset,
@@ -106,7 +100,7 @@ def report(
     out_dir: Path,
     topk: int,
 ) -> dict:
-    """Compute metrics, write the report bundle and return the comparison row."""
+    """Compute metrics, save the full report bundle and log a summary."""
     metrics = compute_metrics(
         preds.label, preds.grade, preds.class_probs, preds.prob_dr, list(CLASS_NAMES)
     )
@@ -121,7 +115,7 @@ def report(
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Evaluate every configured model and ensemble on every configured dataset."""
+    """Load models and ensembles, run inference on all datasets, and write results."""
     parser = argparse.ArgumentParser(description="Evaluate DR models and ensembles")
     parser.add_argument("--config", required=True, help="evaluation config YAML")
     parser.add_argument("-o", dest="overrides", action="append", default=[], help="key=value")

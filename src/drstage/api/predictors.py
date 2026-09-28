@@ -1,4 +1,4 @@
-"""Model inference interface and demo predictor."""
+"""Predictor interface and a lightweight demo that doesn't require a checkpoint."""
 
 import hashlib
 from dataclasses import dataclass
@@ -13,7 +13,7 @@ from drstage.utils.config import load_config
 
 @dataclass
 class Prediction:
-    """Model prediction output."""
+    """Single prediction: grade, probabilities and preprocessed images."""
 
     grade: int
     grade_name: str
@@ -25,33 +25,26 @@ class Prediction:
 
 
 class Predictor(Protocol):
-    """Interface for a DR severity predictor."""
+    """Any object that can predict grades and return a Prediction dataclass."""
 
     demo: bool
 
     def info(self) -> dict | None:
-        """Return model info dict or None."""
+        """Return metadata dict, or None if running in demo mode."""
         ...
 
     def predict(self, image_rgb: np.ndarray) -> Prediction:
-        """Predict DR severity.
-
-        Args:
-            image_rgb: Input image, RGB uint8.
-
-        Returns:
-            Prediction with grade 0-4, probs, and images.
-        """
+        """Grade one image and return the prediction with visualisations."""
         ...
 
 
 class DemoPredictor:
-    """Demo predictor with realistic preprocessing but synthetic predictions."""
+    """Placeholder: real preprocessing but synthetic predictions for development."""
 
     demo = True
 
     def __init__(self):
-        """Initialize demo predictor."""
+        """Load the preprocessing config."""
         cfg = load_config(Path("configs/data.yaml"))
         self._preprocess_cfg = cfg["preprocess"]
         self._grade_names = ["No DR", "Mild", "Moderate", "Severe", "Proliferative"]
@@ -61,14 +54,7 @@ class DemoPredictor:
         return None
 
     def predict(self, image_rgb: np.ndarray) -> Prediction:
-        """Predict with realistic preprocessing, synthetic class probs and heatmap.
-
-        Args:
-            image_rgb: Input image, RGB uint8.
-
-        Returns:
-            Prediction with deterministic probs from image hash and heatmap from Ben Graham.
-        """
+        """Preprocess realistically but generate deterministic grades from the image hash."""
         size = self._preprocess_cfg["size"]
 
         enhanced, _ = preprocess_image(
@@ -84,7 +70,7 @@ class DemoPredictor:
         class_probs = class_probs / class_probs.sum()
 
         prob_dr = float(1.0 - class_probs[0])
-        # ordinal median decode, as for CORN: grade >= 1 exactly when prob_dr > 0.5
+        # decode as for CORN to stay consistent with the main model
         grade = int((1.0 - np.cumsum(class_probs)[:-1] > 0.5).sum())
         grade_name = self._grade_names[grade]
 
@@ -107,18 +93,7 @@ class DemoPredictor:
 
 
 def load_predictor(checkpoint: str | None, device: str = "auto") -> Predictor:
-    """Load predictor from checkpoint or return demo.
-
-    Args:
-        checkpoint: Path to model checkpoint, or None for demo.
-        device: Device to load on ("auto", "cpu", "mps", "cuda").
-
-    Returns:
-        Predictor instance.
-
-    Raises:
-        RuntimeError: If checkpoint path is invalid or model load fails.
-    """
+    """Load a trained model from a checkpoint, or return the demo predictor if none is set."""
     if checkpoint is None:
         return DemoPredictor()
 
@@ -139,20 +114,20 @@ def load_predictor(checkpoint: str | None, device: str = "auto") -> Predictor:
         ) from e
 
     class RealPredictorAdapter:
-        """Adapter to convert real predictor dict output to Prediction."""
+        """Adapt a dict-returning predictor to the Prediction dataclass interface."""
 
         demo = False
 
         def __init__(self, inner):
-            """Wrap a trained predictor from drstage.inference."""
+            """Wrap the real predictor from the training module."""
             self.inner = inner
 
         def info(self) -> dict:
-            """Model metadata shown in the UI."""
+            """Return the model metadata."""
             return self.inner.info()
 
         def predict(self, image_rgb: np.ndarray) -> Prediction:
-            """Run the trained model and convert its output dictionary to a Prediction."""
+            """Convert the dict output to a Prediction object."""
             result = self.inner.predict(image_rgb)
             return Prediction(
                 grade=result["grade"],

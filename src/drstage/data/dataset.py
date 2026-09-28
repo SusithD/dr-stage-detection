@@ -50,11 +50,12 @@ class CachedFundusDataset(Dataset):
             )
 
     def __len__(self) -> int:
-        """Return number of samples."""
+        """Return the number of samples in the dataset."""
         return len(self.frame)
 
     def __getitem__(self, idx: int) -> dict:
-        """Load, resize, transform, and return image and label.
+        """Load a cached image, resize if needed, apply transforms, and return it with
+        its label and metadata.
 
         Returns:
             dict with keys: image (FloatTensor [3,S,S]), label (int64 tensor),

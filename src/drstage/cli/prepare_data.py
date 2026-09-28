@@ -1,7 +1,6 @@
-"""Data preparation pipeline: manifest -> hash -> dedup -> split -> cache -> report.
+"""Load manifests, audit duplicates, split into train/val/test, preprocess and visualise.
 
-Every stage reads its inputs from and writes its outputs to ``paths.processed_root`` so that
-stages can be re-run independently, e.g. ``--stage cache --methods clahe_l``.
+Stages can be run in order or individually; all artefacts are stored in the processed root.
 """
 
 import argparse
@@ -43,10 +42,10 @@ logger = logging.getLogger("drstage.prepare_data")
 
 
 class Paths:
-    """Locations of every artefact produced by the pipeline."""
+    """Paths to all outputs from each stage of the pipeline."""
 
     def __init__(self, root: Path):
-        """Remember the root folder all artefacts are written under."""
+        """Store the root directory."""
         self.root = root
         self.reports = root / "reports"
         self.splits = root / "splits"
@@ -84,7 +83,7 @@ class Paths:
 
 
 def available_datasets(cfg: dict, requested: list[str]) -> list[str]:
-    """Filter requested datasets to those whose label CSV exists."""
+    """Return only the datasets whose label CSVs exist."""
     present = []
     for ds in requested:
         if Path(cfg["datasets"][ds]["csv"]).exists():
@@ -95,7 +94,7 @@ def available_datasets(cfg: dict, requested: list[str]) -> list[str]:
 
 
 def stage_manifest(cfg: dict, paths: Paths, datasets: list[str], overwrite: bool) -> None:
-    """Build the manifest of labelled images for each dataset."""
+    """Load the image paths and labels from each dataset's CSV."""
     for ds in datasets:
         if paths.manifest(ds).exists() and not overwrite:
             logger.info(f"{ds}: manifest exists, skipping")
@@ -106,7 +105,7 @@ def stage_manifest(cfg: dict, paths: Paths, datasets: list[str], overwrite: bool
 
 
 def stage_hash(cfg: dict, paths: Paths, datasets: list[str], overwrite: bool) -> None:
-    """Compute a perceptual hash for every image in each manifest."""
+    """Compute perceptual hashes to group near-duplicate images later."""
     for ds in datasets:
         if paths.hashes(ds).exists() and not overwrite:
             logger.info(f"{ds}: hashes exist, skipping")
@@ -118,7 +117,7 @@ def stage_hash(cfg: dict, paths: Paths, datasets: list[str], overwrite: bool) ->
 
 
 def _dedup_dataset(cfg: dict, paths: Paths, ds: str) -> tuple[pd.DataFrame, pd.DataFrame, dict]:
-    """Group near-duplicates in one dataset and keep one image per label-consistent group."""
+    """Remove near-duplicates and keep one image per group with consistent labels."""
     manifest = pd.read_csv(paths.manifest(ds))
     hashes = pd.read_csv(paths.hashes(ds))
     groups = find_duplicate_groups(hashes, cfg["dedup"]["near_dup_threshold"])
@@ -131,7 +130,7 @@ def _dedup_dataset(cfg: dict, paths: Paths, ds: str) -> tuple[pd.DataFrame, pd.D
 
 
 def stage_dedup(cfg: dict, paths: Paths, datasets: list[str]) -> None:
-    """Drop near-duplicate and conflicting images, and APTOS images that overlap DDR."""
+    """Remove duplicates within each dataset and cross-dataset overlaps."""
     report: dict = {}
     for ds in datasets:
         kept, dropped, summary = _dedup_dataset(cfg, paths, ds)
@@ -159,7 +158,7 @@ def stage_dedup(cfg: dict, paths: Paths, datasets: list[str]) -> None:
 
 
 def stage_split(cfg: dict, paths: Paths, datasets: list[str]) -> bool:
-    """Split DDR into train/val/test and export the cleaned APTOS external test set."""
+    """Divide DDR into train/val/test by stratified sampling, and export APTOS as external test."""
     ok = True
     if "ddr" in datasets:
         kept = pd.read_csv(paths.kept("ddr"))
@@ -190,7 +189,7 @@ def stage_split(cfg: dict, paths: Paths, datasets: list[str]) -> bool:
 def stage_cache(
     cfg: dict, paths: Paths, datasets: list[str], methods: list[str], overwrite: bool
 ) -> None:
-    """Preprocess and cache images for each requested method."""
+    """Apply each preprocessing method and save the results to disk."""
     sources = {"ddr": paths.ddr_split, "aptos": paths.aptos_test}
     for ds in datasets:
         frame = pd.read_csv(sources[ds])
@@ -212,7 +211,7 @@ def stage_cache(
 
 
 def stage_report(cfg: dict, paths: Paths, datasets: list[str]) -> None:
-    """Write the data-audit figures used in the report."""
+    """Generate visualisations of class distributions, preprocessing and duplicates."""
     frames = {ds: pd.read_csv(paths.manifest(ds)) for ds in datasets}
     plot_class_distribution(
         {ds.upper(): f for ds, f in frames.items()}, paths.reports / "fig_class_distribution.png"
@@ -242,7 +241,7 @@ def stage_report(cfg: dict, paths: Paths, datasets: list[str]) -> None:
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    """Command-line options for the data pipeline."""
+    """Parse command-line arguments for the data preparation pipeline."""
     parser = argparse.ArgumentParser(description="Prepare DDR and APTOS data for DR grading")
     parser.add_argument("--config", default="configs/data.yaml")
     parser.add_argument("--stage", default="all", choices=("all",) + STAGES)
@@ -254,7 +253,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Run the requested data-preparation stages in order."""
+    """Run the requested pipeline stages, or all of them in order."""
     args = parse_args(argv)
     cfg = load_config(args.config, args.overrides)
     seed_everything(cfg["seed"], deterministic=False)

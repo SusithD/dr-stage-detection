@@ -42,7 +42,7 @@ def load_config(path: str | Path, overrides: Sequence[str] = ()) -> dict:
 
 
 def save_config(cfg: dict, path: Path) -> None:
-    """Save configuration to YAML file.
+    """Write config to YAML, creating parent directories if needed.
 
     Args:
         cfg: Configuration dict.

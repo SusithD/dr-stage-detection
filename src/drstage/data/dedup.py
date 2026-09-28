@@ -36,7 +36,7 @@ def hamming(a: str, b: str) -> int:
 
 
 def _compute_hash_worker(args: tuple) -> tuple:
-    """Worker function for compute_hashes; spawned per task, so must be module-level."""
+    """Hash a single image; must be module-level for multiprocessing spawn."""
     image_id, path, cfg = args
 
     try:
@@ -97,12 +97,12 @@ _POPCOUNT = np.array([bin(i).count("1") for i in range(256)], dtype=np.uint8)
 
 
 def _hash_bytes(hex_hashes: pd.Series) -> np.ndarray:
-    """Convert hex hash strings to an (N, n_bytes) uint8 array."""
+    """Convert hex hash strings to byte arrays for fast distance computation."""
     return np.stack([np.frombuffer(bytes.fromhex(h), dtype=np.uint8) for h in hex_hashes])
 
 
 def _block_distances(a: np.ndarray, b: np.ndarray) -> np.ndarray:
-    """Pairwise Hamming distances between two uint8 hash arrays, shape (len(a), len(b))."""
+    """Compute pairwise Hamming distances; result shape is (len(a), len(b))."""
     return _POPCOUNT[np.bitwise_xor(a[:, None, :], b[None, :, :])].sum(axis=2, dtype=np.uint16)
 
 
@@ -122,21 +122,21 @@ def _close_pairs(
 
 
 class UnionFind:
-    """Disjoint-set forest with path compression, used to merge duplicate pairs into groups."""
+    """Merge duplicate pairs into groups using a disjoint-set forest."""
 
     def __init__(self, n: int):
-        """Start with every element in its own set."""
+        """Initialize with n elements, each in its own set."""
         self.parent = list(range(n))
 
     def find(self, x: int) -> int:
-        """Return the root of x."""
+        """Find the root of x, with path compression."""
         while self.parent[x] != x:
             self.parent[x] = self.parent[self.parent[x]]
             x = self.parent[x]
         return x
 
     def union(self, x: int, y: int) -> None:
-        """Merge the sets containing x and y."""
+        """Merge the sets containing x and y by their roots."""
         rx, ry = self.find(x), self.find(y)
         if rx != ry:
             self.parent[max(rx, ry)] = min(rx, ry)
@@ -284,7 +284,7 @@ def duplicate_example_pairs(
     manifest: pd.DataFrame,
     max_pairs: int,
 ) -> list[tuple[str, str, int]]:
-    """Get example duplicate pairs for visualization.
+    """Extract example duplicate pairs sorted by Hamming distance (highest first).
 
     Args:
         groups: DataFrame with image_id, dup_group
@@ -293,7 +293,7 @@ def duplicate_example_pairs(
         max_pairs: max number of pairs to return
 
     Returns:
-        List of (path_a, path_b, distance) tuples
+        List of (path_a, path_b, distance) tuples, sorted by distance descending
     """
     merged = groups.merge(hashes, on="image_id").merge(
         manifest[["image_id", "path"]], on="image_id"

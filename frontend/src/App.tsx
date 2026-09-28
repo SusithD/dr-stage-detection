@@ -1,3 +1,6 @@
+/**
+ * Top-level screen: holds the two-eye visit, talks to the API and wires the three panels together.
+ */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from './api'
 import { PrintReport } from './components/PrintReport'
@@ -12,6 +15,7 @@ type Theme = 'light' | 'dark'
 const THEME_KEY = 'retinascan-theme'
 const EMPTY_VISIT: Record<EyeSide, EyeCase | null> = { right: null, left: null }
 
+/** Recover stored theme or fall back to system preference. */
 function initialTheme(): Theme {
   try {
     const saved = localStorage.getItem(THEME_KEY)
@@ -22,6 +26,7 @@ function initialTheme(): Theme {
   return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
 }
 
+/** Parse view mode from URL query parameter, default to original. */
 function initialView(): ViewMode {
   const requested = new URLSearchParams(window.location.search).get('view')
   return requested === 'enhanced' || requested === 'compare' || requested === 'heatmap'
@@ -58,10 +63,15 @@ export default function App() {
     }
   }, [theme])
 
+  /** Merge updates into an eye's result; no-op if the eye slot is empty. */
   const patch = useCallback((side: EyeSide, update: Partial<EyeCase>) => {
     setEyes((prev) => (prev[side] ? { ...prev, [side]: { ...prev[side]!, ...update } } : prev))
   }, [])
 
+  /**
+   * Show the photo straight away, then fill in the result when the API answers. Each eye keeps a
+   * counter so a slow response for an old photo cannot overwrite a newer one.
+   */
   const analyse = useCallback(
     async (side: EyeSide, blob: Blob, filename: string, sample: Sample | null) => {
       const token = ++tokens.current[side]
@@ -92,7 +102,7 @@ export default function App() {
     [patch],
   )
 
-  // ?right=<sample id>&left=<sample id>&view=heatmap preloads a visit, e.g. for demos
+  /** ?right=id&left=id&view=mode loads sample photos on page load for demos. */
   const preloaded = useRef(false)
   useEffect(() => {
     if (preloaded.current || samples.length === 0) return
@@ -119,6 +129,7 @@ export default function App() {
     }
   }
 
+  /** Revoke the preview blob and reset the eye slot. */
   const clear = (side: EyeSide) => {
     tokens.current[side]++
     setEyes((prev) => {
@@ -127,6 +138,7 @@ export default function App() {
     })
   }
 
+  /** Clear both eyes, reset patient reference and view to defaults. */
   const newVisit = () => {
     clear('right')
     clear('left')
@@ -135,6 +147,7 @@ export default function App() {
     setView('original')
   }
 
+  /** Top-level keyboard shortcuts: ? for help, R/E to switch eyes. */
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement

@@ -1,4 +1,4 @@
-"""FastAPI application serving the RetinaScan API and the built frontend."""
+"""RetinaScan API: serve predictions, sample gallery and the frontend app."""
 
 import asyncio
 import logging
@@ -37,7 +37,7 @@ SAMPLE_SEED = 7
 
 @dataclass
 class AppState:
-    """Objects shared by request handlers for the lifetime of the server."""
+    """Shared state: the loaded predictor, sample gallery and a request lock."""
 
     predictor: Predictor | None
     samples: pd.DataFrame = field(default_factory=pd.DataFrame)
@@ -45,7 +45,7 @@ class AppState:
 
 
 def select_samples(split_csv: Path) -> pd.DataFrame:
-    """Pick a fixed set of test-split images, SAMPLES_PER_GRADE per grade, indexed by image_id."""
+    """Load and sample the test split to show in the UI gallery."""
     if not split_csv.exists():
         logger.warning(f"split CSV {split_csv} not found; the sample gallery will be empty")
         return pd.DataFrame(columns=["label", "path"])
@@ -58,7 +58,7 @@ def select_samples(split_csv: Path) -> pd.DataFrame:
 
 
 def _sample_path(state: AppState, sample_id: str) -> Path:
-    """Resolve a gallery sample id to its image file, or raise a 404 with a clear message."""
+    """Look up the file path for a sample by id, raising a 404 if not found."""
     if sample_id not in state.samples.index:
         raise HTTPException(status.HTTP_404_NOT_FOUND, f"No sample with id '{sample_id}'.")
     path = Path(state.samples.at[sample_id, "path"])
@@ -74,16 +74,7 @@ def create_app(
     split_csv: Path | None = None,
     frontend_dist: Path | None = None,
 ) -> FastAPI:
-    """Build the FastAPI app.
-
-    Args:
-        predictor: Predictor to serve; loaded from DRSTAGE_CHECKPOINT (demo if unset) when None.
-        split_csv: Split CSV used for the sample gallery (default DRSTAGE_SPLIT_CSV).
-        frontend_dist: Built frontend directory served at "/" (default DRSTAGE_FRONTEND_DIST).
-
-    Returns:
-        Configured FastAPI application.
-    """
+    """Wire up the prediction API, sample endpoints and frontend asset serving."""
     split_csv = split_csv or Path(
         os.getenv("DRSTAGE_SPLIT_CSV", "data/processed/splits/ddr_split.csv")
     )

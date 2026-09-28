@@ -7,9 +7,8 @@ from pathlib import Path
 def get_logger(
     name: str, log_file: Path | None = None, level: int = logging.INFO
 ) -> logging.Logger:
-    """Get or create a logger with idempotent handlers.
-
-    Calling twice with the same name does not duplicate handlers.
+    """Get or create a logger; safe to call multiple times with the same name without
+    duplicating handlers.
 
     Args:
         name: Logger name.

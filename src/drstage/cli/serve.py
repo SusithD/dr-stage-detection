@@ -1,4 +1,4 @@
-"""Start the RetinaScan web app (API plus built frontend) with uvicorn."""
+"""Launch the RetinaScan web app on localhost with the chosen checkpoint and device."""
 
 import argparse
 import os
@@ -10,7 +10,7 @@ from drstage.utils.logging import get_logger
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    """Command-line options for the web server."""
+    """Parse arguments for starting the web app."""
     parser = argparse.ArgumentParser(description="Serve the RetinaScan DR screening web app")
     parser.add_argument("--checkpoint", default=None, help="trained checkpoint; omit for demo mode")
     parser.add_argument("--host", default="127.0.0.1")
@@ -20,7 +20,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Start the RetinaScan API and frontend with uvicorn."""
+    """Initialise the app and start the server."""
     args = parse_args(argv)
     if args.checkpoint:
         os.environ["DRSTAGE_CHECKPOINT"] = args.checkpoint

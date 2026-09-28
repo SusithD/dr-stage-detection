@@ -86,7 +86,7 @@ def stratified_group_split(
     test_groups = set(group_df.iloc[test_idx][group_col].values)
 
     def assign_split(group_id):
-        """Split name for a duplicate group."""
+        """Map a group ID to its assigned split (train, val, or test)."""
         if group_id in train_groups:
             return "train"
         elif group_id in val_groups:

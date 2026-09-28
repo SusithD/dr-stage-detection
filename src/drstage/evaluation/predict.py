@@ -1,4 +1,4 @@
-"""Inference utilities: TTA, ensemble, and prediction aggregation."""
+"""Predict on batches of data with optional test-time averaging and ensemble merging."""
 
 import logging
 from dataclasses import dataclass
@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class Predictions:
-    """Aggregated predictions from a dataset."""
+    """Batch of predictions with grades, probabilities and metadata."""
 
     image_id: np.ndarray
     label: np.ndarray
@@ -24,7 +24,7 @@ class Predictions:
     class_probs: np.ndarray
 
     def to_frame(self):
-        """Convert to pandas DataFrame with one row per image."""
+        """Export as a DataFrame, one row per image."""
         import pandas as pd
 
         data = {
@@ -39,18 +39,10 @@ class Predictions:
 
 
 def flip_tta_logits_to_probs(model: DRModel, x: Tensor, flips: bool) -> tuple[Tensor, Tensor]:
-    """Apply Test-Time Augmentation via flips and average probabilities.
+    """Average class probabilities over the image and its horizontal, vertical and double flip.
 
-    For CORN: average sigmoid(logits) across {id, hflip, vflip, hvflip}.
-    For CE: average softmax(logits) across same flips.
-
-    Args:
-        model: DRModel with forward() and predict().
-        x: [N, 3, H, W] image tensor.
-        flips: Whether to apply flips.
-
-    Returns:
-        (class_probs, prob_dr) both averaged over all TTA variants.
+    Probabilities are averaged rather than logits so both heads can be combined the same way.
+    With flips off the model just runs once.
     """
     if not flips:
         with torch.no_grad():
@@ -80,17 +72,10 @@ def flip_tta_logits_to_probs(model: DRModel, x: Tensor, flips: bool) -> tuple[Te
 
 
 def grade_from_class_probs(class_probs: Tensor, head: str) -> torch.LongTensor:
-    """Decode grade from class probabilities.
+    """Map class probabilities to ordinal grades.
 
-    For CORN: p0 + p1 + ... + p_k should sum through cumulative rule.
-    For CE: argmax(class_probs).
-
-    Args:
-        class_probs: [N, K] class probabilities.
-        head: 'corn' or 'ce'.
-
-    Returns:
-        [N] predicted grades.
+    CE takes the most likely class. CORN rebuilds P(y > k) from the probabilities and counts
+    how many thresholds are above 0.5, which keeps the grade rank-consistent after averaging.
     """
     if head == "ce":
         return torch.argmax(class_probs, dim=1).long()
@@ -115,20 +100,7 @@ def run_inference(
     head: str,
     limit_batches: int = 0,
 ) -> Predictions:
-    """Run inference on a dataset.
-
-    Args:
-        model: DRModel instance.
-        loader: DataLoader yielding batches with 'image', 'label', 'image_id'.
-        device: Device to run on.
-        amp: AmpPolicy object.
-        tta: Whether to apply TTA (flip averaging).
-        head: 'corn' or 'ce'.
-        limit_batches: Max batches to process (0 = all).
-
-    Returns:
-        Predictions aggregated over the dataset.
-    """
+    """Predict on every batch in the loader, collecting grades and probabilities."""
     model.eval()
     model = model.to(device)
 
@@ -179,16 +151,9 @@ def run_inference(
 
 
 def ensemble(preds: list[Predictions], head: str) -> Predictions:
-    """Ensemble predictions from multiple models.
+    """Merge predictions from multiple models by averaging class probabilities.
 
-    Aligns on image_id, averages class_probs and prob_dr, re-derives grade.
-
-    Args:
-        preds: List of Predictions objects.
-        head: 'corn' or 'ce'.
-
-    Returns:
-        Ensembled Predictions.
+    Aligns all predictions on image_id, then re-computes grades from the averaged probs.
     """
     if not preds:
         raise ValueError("No predictions to ensemble")

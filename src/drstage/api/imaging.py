@@ -1,4 +1,4 @@
-"""Image encoding, decoding, and transformations for the API."""
+"""Image decoding, encoding to data URLs, and thumbnail generation."""
 
 import base64
 from pathlib import Path
@@ -9,17 +9,7 @@ import numpy as np
 
 
 def decode_upload(data: bytes) -> np.ndarray:
-    """Decode uploaded image bytes to RGB uint8 array.
-
-    Args:
-        data: Image file bytes (JPG, PNG, TIFF).
-
-    Returns:
-        RGB uint8 ndarray.
-
-    Raises:
-        ValueError: If data is not a valid, decodable image.
-    """
+    """Load uploaded image bytes and convert to RGB uint8."""
     nparr = np.frombuffer(data, np.uint8)
     img = cv2.imdecode(nparr, cv2.IMREAD_UNCHANGED)
 
@@ -45,14 +35,7 @@ def decode_upload(data: bytes) -> np.ndarray:
 
 
 def to_png_data_url(img: np.ndarray) -> str:
-    """Convert RGB or RGBA uint8 image to PNG data URL.
-
-    Args:
-        img: RGB or RGBA uint8 ndarray.
-
-    Returns:
-        Data URL string (data:image/png;base64,...).
-    """
+    """Encode image to PNG and wrap as a data URL for embedding in JSON."""
     if img.dtype != np.uint8:
         img = np.clip(img, 0, 255).astype(np.uint8)
 
@@ -70,15 +53,7 @@ def to_png_data_url(img: np.ndarray) -> str:
 
 
 def heatmap_to_rgba(cam: np.ndarray, colormap: str = "inferno") -> np.ndarray:
-    """Convert CAM (float32, [0, 1]) to RGBA using a perceptual colormap.
-
-    Args:
-        cam: Float32 HxW array in [0, 1].
-        colormap: Matplotlib colormap name.
-
-    Returns:
-        RGBA uint8 HxW4 array.
-    """
+    """Map heatmap values to RGBA using a colourmap, with alpha from the heatmap itself."""
     if cam.min() < 0 or cam.max() > 1:
         cam = np.clip(cam, 0, 1)
 
@@ -94,19 +69,7 @@ def heatmap_to_rgba(cam: np.ndarray, colormap: str = "inferno") -> np.ndarray:
 
 
 def thumbnail_jpeg(path: Path, size: int = 256) -> bytes:
-    """Load image, circle crop, resize, and encode to JPEG.
-
-    Args:
-        path: Path to image file.
-        size: Target size in pixels (square).
-
-    Returns:
-        JPEG bytes.
-
-    Raises:
-        FileNotFoundError: If image file does not exist.
-        ValueError: If image cannot be decoded.
-    """
+    """Load, circle-crop, resize and encode to JPEG."""
     from drstage.data.preprocess import circle_crop, load_rgb, resize_square
 
     img = load_rgb(path)

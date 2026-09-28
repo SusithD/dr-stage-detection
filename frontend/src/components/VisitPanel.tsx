@@ -1,3 +1,7 @@
+/**
+ * Left sidebar: patient ID field, eye photo slots with upload buttons, and test-set sample gallery.
+ * Sample grid is sorted by grade so each column shows one severity level.
+ */
 import { useRef } from 'react'
 import { asGrade, finalGrade } from '../grades'
 import type { EyeCase, EyeSide, Sample } from '../types'
@@ -169,7 +173,7 @@ function EyeSlot({ side, eye, selected, onSelect, onFile, onClear }: EyeSlotProp
   )
 }
 
-/** Orders samples so each grid column holds one grade: row one is the first of each grade. */
+/** Put the first sample of each grade in row one, the second in row two, so columns line up by grade. */
 function byGradeColumns(samples: Sample[]): Sample[] {
   const seen = new Map<number, number>()
   return samples

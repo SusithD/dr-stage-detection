@@ -11,7 +11,8 @@ logger = logging.getLogger(__name__)
 def build_train_transforms(
     img_size: int, mean: list[float], std: list[float], aug: dict
 ) -> A.Compose:
-    """Build training transforms with augmentations.
+    """Build a training pipeline with augmentations: flips, rotation, random crop,
+    color jitter, and normalization.
 
     Args:
         img_size: Target image size.
@@ -57,7 +58,7 @@ def build_train_transforms(
 
 
 def build_eval_transforms(img_size: int, mean: list[float], std: list[float]) -> A.Compose:
-    """Build evaluation transforms (no augmentation).
+    """Build an evaluation pipeline with resize and normalization only (no augmentation).
 
     Args:
         img_size: Target image size.

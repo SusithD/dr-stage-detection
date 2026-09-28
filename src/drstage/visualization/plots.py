@@ -14,7 +14,7 @@ from drstage.data.registry import CLASS_NAMES
 
 
 def plot_class_distribution(frames: dict[str, pd.DataFrame], out: Path) -> None:
-    """Plot grade distribution per dataset.
+    """Show the DR grade distribution across datasets as grouped bar chart.
 
     Args:
         frames: Dict of dataset_name -> DataFrame with 'label' column.
@@ -46,7 +46,8 @@ def plot_class_distribution(frames: dict[str, pd.DataFrame], out: Path) -> None:
 
 
 def plot_split_distribution(split_df: pd.DataFrame, out: Path) -> None:
-    """Plot split distribution across classes.
+    """Show how each DR grade is distributed across train/val/test splits as grouped
+    bar chart.
 
     Args:
         split_df: DataFrame with 'split' and 'label' columns.
@@ -81,10 +82,10 @@ def plot_split_distribution(split_df: pd.DataFrame, out: Path) -> None:
 
 
 def plot_dup_examples(pairs: list[tuple[str, str, int]], out: Path, max_pairs: int) -> None:
-    """Plot example duplicate pairs.
+    """Visualize the most similar duplicate pairs side by side.
 
     Args:
-        pairs: List of (path_a, path_b, hamming_distance) tuples.
+        pairs: List of (path_a, path_b, hamming_distance) tuples, sorted by distance.
         out: Output path for PNG.
         max_pairs: Maximum pairs to display.
     """
@@ -117,7 +118,7 @@ def plot_dup_examples(pairs: list[tuple[str, str, int]], out: Path, max_pairs: i
 
 
 def plot_image_size_hist(manifest: pd.DataFrame, out: Path) -> None:
-    """Plot histogram of image sizes.
+    """Show width and height distributions of raw images.
 
     Args:
         manifest: DataFrame with 'width' and 'height' columns.
@@ -145,7 +146,8 @@ def plot_image_size_hist(manifest: pd.DataFrame, out: Path) -> None:
 
 
 def plot_preprocess_examples(rows: pd.DataFrame, cfg: dict, out: Path) -> None:
-    """Plot preprocessing examples: raw, circle crop, ben_graham, clahe_l.
+    """Show each image through the full preprocessing pipeline side by side: raw,
+    circle crop, Ben Graham, and CLAHE.
 
     Args:
         rows: DataFrame with 'image_id', 'path', 'label' columns.

@@ -26,7 +26,7 @@ class DatasetSpec:
 
 
 def spec_from_config(name: str, cfg: dict) -> DatasetSpec:
-    """Create DatasetSpec from config dict."""
+    """Build a DatasetSpec from the config's dataset section."""
     ds = cfg["datasets"][name]
     return DatasetSpec(
         name=name,
@@ -40,17 +40,16 @@ def spec_from_config(name: str, cfg: dict) -> DatasetSpec:
 
 
 def load_manifest(spec: DatasetSpec, read_dims: bool = True) -> pd.DataFrame:
-    """Load manifest from CSV, dropping rows with missing files.
-
-    Returns DataFrame with columns: image_id, path, label, dataset, width,
-    height, file_bytes. Validates labels are in [0, 4]. Sorted by image_id.
+    """Load the CSV and build a manifest, dropping rows with missing or unlabelled files.
+    Reads image dimensions via PIL when requested; skips files with invalid labels.
 
     Args:
         spec: DatasetSpec defining the dataset
         read_dims: whether to read image dimensions (via PIL lazy header)
 
     Returns:
-        Manifest DataFrame
+        Manifest DataFrame with columns: image_id, path, label, dataset, width,
+        height, file_bytes. Labels are validated to be in [0, 4].
     """
     csv_df = pd.read_csv(spec.csv)
 

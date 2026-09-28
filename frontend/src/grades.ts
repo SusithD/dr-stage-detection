@@ -1,3 +1,7 @@
+/**
+ * Grade definitions, screening outcomes, and uncertainty detection.
+ * Key rule: worse eye decides the visit outcome.
+ */
 import type { EyeCase, Grade, PredictResponse } from './types'
 
 export interface GradeInfo {
@@ -34,7 +38,7 @@ export function asGrade(value: number): Grade {
   return Math.min(4, Math.max(0, Math.round(value))) as Grade
 }
 
-/** Grade used for decisions: the clinician's grade when reviewed, otherwise the model's. */
+/** Clinician's grade if reviewed, else the model's grade. Returns null if no result yet. */
 export function finalGrade(eye: EyeCase): Grade | null {
   if (eye.review) return eye.review.grade
   return eye.result ? asGrade(eye.result.grade) : null
@@ -46,7 +50,7 @@ export interface Uncertainty {
   margin: number
 }
 
-/** Flags predictions whose top two grades are close or whose top grade is weak. */
+/** Warn if top two grades are similar (<0.2 margin) or top grade is weak (<0.5 confidence). */
 export function uncertainty(result: PredictResponse): Uncertainty | null {
   const ranked = result.class_probs
     .map((p, g) => ({ p, g: g as Grade }))
@@ -63,7 +67,7 @@ export interface Outcome {
   detail: string
 }
 
-/** Visit-level screening outcome: the worse eye decides, following common screening practice. */
+/** Screening recommendation based on the worse eye's final grade (standard DR screening protocol). */
 export function visitOutcome(eyes: EyeCase[]): Outcome {
   const done = eyes.filter((e) => e.status === 'done' && e.result)
   if (done.length === 0) {

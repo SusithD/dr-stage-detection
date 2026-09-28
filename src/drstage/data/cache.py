@@ -27,7 +27,7 @@ def cached_path(cache_root: Path, image_id: str, fmt: str = "png") -> Path:
 
 
 def _process_one(args: tuple) -> tuple:
-    """Worker function for multiprocessing: process a single image."""
+    """Process and cache a single image; must be module-level for multiprocessing spawn."""
     image_id, path, dataset, method, cfg, cache_root, fmt, overwrite = args
     cache_output = cached_path(cache_root, image_id, fmt)
 
@@ -54,7 +54,8 @@ def build_cache(
     num_workers: int,
     overwrite: bool = False,
 ) -> pd.DataFrame:
-    """Cache preprocessed images using multiprocessing."""
+    """Preprocess and cache all images in parallel. Writes a manifest JSON with
+    processing stats and error summaries."""
     cache_root = cache_dir(processed_root, dataset, method, cfg["size"])
     fmt = cfg.get("cache_format", "png")
 

@@ -1,4 +1,4 @@
-"""Visualization plots for evaluation results."""
+"""Plot confusion matrices, ROC curves, and galleries of results and attention maps."""
 
 import logging
 from pathlib import Path
@@ -10,20 +10,13 @@ logger = logging.getLogger(__name__)
 
 
 def _row_normalise(cm: np.ndarray) -> np.ndarray:
-    """Divide each confusion-matrix row by its total, leaving empty rows as zeros."""
+    """Normalise each row of the confusion matrix to sum to 1."""
     totals = cm.sum(axis=1, keepdims=True).astype(np.float32)
     return np.divide(cm, totals, out=np.zeros_like(totals * cm, dtype=np.float32), where=totals > 0)
 
 
 def plot_confusion_matrix(cm, class_names, out: Path, normalized: bool = False) -> None:
-    """Plot confusion matrix.
-
-    Args:
-        cm: [K, K] confusion matrix.
-        class_names: List of K class names.
-        out: Output file path.
-        normalized: Whether to normalize by row.
-    """
+    """Draw confusion matrix heatmap with cell counts or percentages."""
     fig, ax = plt.subplots(figsize=(8, 8))
 
     if normalized:
@@ -69,14 +62,7 @@ def plot_confusion_matrix(cm, class_names, out: Path, normalized: bool = False) 
 
 
 def plot_roc(roc: dict, auc: float, title: str, out: Path) -> None:
-    """Plot ROC curve.
-
-    Args:
-        roc: Dict with 'fpr' and 'tpr' lists.
-        auc: AUC score.
-        title: Plot title.
-        out: Output file path.
-    """
+    """Draw ROC curve and annotate with AUC."""
     fig, ax = plt.subplots(figsize=(8, 8))
 
     fpr = roc.get("fpr", [])
@@ -97,13 +83,7 @@ def plot_roc(roc: dict, auc: float, title: str, out: Path) -> None:
 
 
 def plot_training_curves(history, out: Path) -> None:
-    """Plot training curves from history DataFrame.
-
-    Args:
-        history: DataFrame with train_loss, val_loss, val_acc, val_qwk,
-            val_macro_f1, lr_backbone columns.
-        out: Output file path.
-    """
+    """Draw loss, accuracy, QWK and learning rate across training epochs."""
     fig, axes = plt.subplots(2, 2, figsize=(12, 10))
 
     if "epoch" not in history.columns:
@@ -160,14 +140,7 @@ def plot_training_curves(history, out: Path) -> None:
 
 
 def plot_error_gallery(rows, cache_root: Path, out: Path, ncols: int = 5) -> None:
-    """Plot gallery of error examples.
-
-    Args:
-        rows: DataFrame with image_id, label, pred, confidence columns.
-        cache_root: Root path to cached images.
-        out: Output file path.
-        ncols: Number of columns in grid.
-    """
+    """Display incorrect predictions in a grid with true and predicted grades."""
     from drstage.data.preprocess import load_rgb
 
     n_rows = int(np.ceil(len(rows) / ncols))
@@ -209,13 +182,7 @@ def plot_error_gallery(rows, cache_root: Path, out: Path, ncols: int = 5) -> Non
 
 
 def plot_cam_grid(items: list[dict], out: Path, ncols: int = 5) -> None:
-    """Plot grid of Grad-CAM overlays.
-
-    Args:
-        items: List of dicts with 'image', 'heatmap', 'title'.
-        out: Output file path.
-        ncols: Number of columns in grid.
-    """
+    """Display images with Grad-CAM heatmap overlays in a grid."""
     n_items = len(items)
     n_rows = int(np.ceil(n_items / ncols))
 

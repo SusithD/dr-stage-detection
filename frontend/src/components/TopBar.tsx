@@ -1,3 +1,6 @@
+/**
+ * Top app bar: brand and model info, theme toggle, print, and shortcuts button.
+ */
 import type { HealthResponse } from '../types'
 import { KeyboardIcon, MoonIcon, PrintIcon, SunIcon } from './Icons'
 
@@ -83,6 +86,7 @@ const DISPLAY_NAMES: Record<string, string> = {
   resnet50: 'ResNet50',
 }
 
+/** Map model checkpoints to friendly architecture names. */
 function shortName(name?: string): string {
   if (!name) return 'Model'
   const arch = name.split('.')[0]

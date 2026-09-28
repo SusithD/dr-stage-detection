@@ -1,3 +1,6 @@
+/**
+ * Modal dialog listing keyboard shortcuts: view modes, zoom, panning, opacity, eye selection.
+ */
 import { useEffect, useRef } from 'react'
 import { CloseIcon } from './Icons'
 

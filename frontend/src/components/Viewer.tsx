@@ -1,3 +1,7 @@
+/**
+ * Photo viewer: zoom, pan, split-screen compare, and heatmap overlay.
+ * Magnifier (loupe) follows the pointer; shortcuts 1-4 switch views.
+ */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent, WheelEvent } from 'react'
 import type { EyeCase, EyeSide, ViewMode } from '../types'
@@ -60,11 +64,13 @@ export function Viewer({
   const base = images ? (view === 'enhanced' ? images.enhanced : images.original) : eye?.preview ?? null
   const ready = Boolean(images)
 
+  /** Reset zoom to 1x and clear pan offset. */
   const reset = useCallback(() => {
     setZoom(1)
     setPan({ x: 0, y: 0 })
   }, [])
 
+  /** Zoom by a factor but stay between 1x and 6x; snapping back to 1x also re-centres. */
   const zoomBy = useCallback((factor: number) => {
     setZoom((z) => {
       const next = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, z * factor))
@@ -73,17 +79,20 @@ export function Viewer({
     })
   }, [])
 
+  /** Scroll up to zoom in, down to zoom out. */
   const onWheel = (event: WheelEvent) => {
     if (!ready) return
     zoomBy(event.deltaY < 0 ? 1.15 : 1 / 1.15)
   }
 
+  /** Start pan drag if zoomed in and not on the split handle. */
   const onPointerDown = (event: PointerEvent) => {
     if (!ready || zoom === 1 || (event.target as HTMLElement).closest('.split-handle')) return
     event.currentTarget.setPointerCapture(event.pointerId)
     drag.current = { x: event.clientX, y: event.clientY, px: pan.x, py: pan.y }
   }
 
+  /** Update pan offset and loupe pointer position during drag. */
   const onPointerMove = (event: PointerEvent) => {
     const rect = stage.current?.getBoundingClientRect()
     if (rect) setPointer({ x: event.clientX - rect.left, y: event.clientY - rect.top })
@@ -99,12 +108,14 @@ export function Viewer({
     drag.current = null
   }
 
+  /** Arrow keys move the split divider in compare view. */
   const onKeyDown = (event: ReactKeyboardEvent) => {
     if (view !== 'compare') return
     if (event.key === 'ArrowLeft') setSplit((s) => Math.max(0, s - 5))
     if (event.key === 'ArrowRight') setSplit((s) => Math.min(100, s + 5))
   }
 
+  /** Drag the split divider to reposition the comparison line. */
   const startSplitDrag = (event: PointerEvent) => {
     event.stopPropagation()
     const move = (e: globalThis.PointerEvent) => {
@@ -120,6 +131,7 @@ export function Viewer({
     window.addEventListener('pointerup', up)
   }
 
+  /** Keyboard shortcuts for zoom, view selection, loupe, and heatmap opacity. */
   useEffect(() => {
     const handler = (event: globalThis.KeyboardEvent) => {
       const target = event.target as HTMLElement
@@ -329,6 +341,7 @@ export function Viewer({
   )
 }
 
+/** Where to point the loupe image: undo the zoom and pan so it shows what is under the cursor. */
 function loupePosition(
   pointer: { x: number; y: number },
   size: { width: number; height: number },

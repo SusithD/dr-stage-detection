@@ -1,10 +1,10 @@
-"""Pydantic models for API request/response contracts."""
+"""Request and response schema definitions for the API."""
 
 from pydantic import BaseModel, Field
 
 
 class ModelInfo(BaseModel):
-    """Model metadata."""
+    """Backbone, head type, image size and preprocessing method."""
 
     name: str
     head: str
@@ -14,7 +14,7 @@ class ModelInfo(BaseModel):
 
 
 class HealthResponse(BaseModel):
-    """GET /api/health response."""
+    """Server status: whether a trained model is loaded and what device it's on."""
 
     status: str = "ok"
     demo: bool
@@ -23,7 +23,7 @@ class HealthResponse(BaseModel):
 
 
 class PredictImages(BaseModel):
-    """Images returned by /api/predict."""
+    """Original, enhanced and Grad-CAM heatmap as PNG data URLs."""
 
     original: str = Field(..., description="Data URL: circle-cropped, resized, no enhancement")
     enhanced: str = Field(..., description="Data URL: preprocessed image the model saw")
@@ -31,7 +31,7 @@ class PredictImages(BaseModel):
 
 
 class QualityCheckOut(BaseModel):
-    """One image quality measure."""
+    """Outcome of one image quality check: exposure, contrast, focus or field."""
 
     key: str
     label: str
@@ -41,14 +41,14 @@ class QualityCheckOut(BaseModel):
 
 
 class QualityReport(BaseModel):
-    """Heuristic image quality screen."""
+    """Summary of image quality checks; gradable if none fail."""
 
     gradable: bool
     checks: list[QualityCheckOut]
 
 
 class PredictResponse(BaseModel):
-    """POST /api/predict response."""
+    """Prediction: grade, probabilities, image visualisations and quality checks."""
 
     demo: bool
     grade: int = Field(..., ge=0, le=4, description="ICDR grade 0-4")
@@ -63,7 +63,7 @@ class PredictResponse(BaseModel):
 
 
 class Sample(BaseModel):
-    """Sample from test split."""
+    """Gallery sample: true grade, name and thumbnail URL."""
 
     id: str
     label: int = Field(..., ge=0, le=4)

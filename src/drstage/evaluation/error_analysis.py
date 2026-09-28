@@ -1,4 +1,4 @@
-"""Error analysis and diagnostic tables."""
+"""Diagnostic breakdowns of prediction errors by type and class."""
 
 import logging
 
@@ -9,15 +9,7 @@ logger = logging.getLogger(__name__)
 
 
 def top_confident_errors(pred, k: int) -> pd.DataFrame:
-    """Extract top-k confident errors.
-
-    Args:
-        pred: Predictions object.
-        k: Number of errors to return.
-
-    Returns:
-        DataFrame with columns: image_id, label, pred, confidence, prob_dr.
-    """
+    """Find the k incorrect predictions with the highest predicted confidence."""
     mask = pred.grade != pred.label
     wrong_indices = np.where(mask)[0]
 
@@ -39,15 +31,7 @@ def top_confident_errors(pred, k: int) -> pd.DataFrame:
 
 
 def per_class_error_table(pred, class_names) -> pd.DataFrame:
-    """Per-class error statistics.
-
-    Args:
-        pred: Predictions object.
-        class_names: List of 5 class names.
-
-    Returns:
-        DataFrame with per-class metrics.
-    """
+    """Compute error rates, off-by-one rates and directional errors for each class."""
     rows = []
 
     for class_idx in range(5):
@@ -97,14 +81,7 @@ def per_class_error_table(pred, class_names) -> pd.DataFrame:
 
 
 def error_distance_stats(pred) -> dict:
-    """Overall error distance statistics.
-
-    Args:
-        pred: Predictions object.
-
-    Returns:
-        Dict with off_by_one_rate, off_by_more_rate, mean_abs_error.
-    """
+    """Compute the fraction of errors that are off-by-one vs larger gaps."""
     mask = pred.grade != pred.label
     if mask.sum() == 0:
         return {

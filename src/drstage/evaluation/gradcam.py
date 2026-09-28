@@ -1,4 +1,4 @@
-"""Grad-CAM visualization for DR stage predictions."""
+"""Grad-CAM targets and heatmap generation for explaining model predictions."""
 
 import logging
 
@@ -13,20 +13,10 @@ logger = logging.getLogger(__name__)
 
 
 class CornExpectedGradeTarget:
-    """Grad-CAM target: expected grade for CORN head.
-
-    E[grade] = sum_k P(y>k) = sum of sigmoid(logits).
-    """
+    """Grad-CAM target using the expected ordinal grade for a CORN head."""
 
     def __call__(self, model_output: Tensor) -> Tensor:
-        """Compute expected grade as target.
-
-        Args:
-            model_output: CORN logits, [K-1] for one sample or [N, K-1].
-
-        Returns:
-            [N] scalar target (one per sample).
-        """
+        """Return E[grade] = sum of sigmoid(logits), the expected grade."""
         logits_f32 = model_output.float()
         cum = torch.sigmoid(logits_f32).cumprod(dim=-1)
         expected_grade = cum.sum(dim=-1)
@@ -34,29 +24,14 @@ class CornExpectedGradeTarget:
 
 
 class ProbDrTarget:
-    """Grad-CAM target: probability of any DR.
-
-    For CORN: logits[0] (P(y>0)).
-    For CE: 1 - softmax[0].
-    """
+    """Grad-CAM target using the probability of any retinopathy."""
 
     def __init__(self, head: str):
-        """Initialize target.
-
-        Args:
-            head: 'corn' or 'ce'.
-        """
+        """Store whether this is a CORN or cross-entropy head."""
         self.head = head
 
     def __call__(self, model_output: Tensor) -> Tensor:
-        """Compute prob_dr as target.
-
-        Args:
-            model_output: [N, out_dim] logits.
-
-        Returns:
-            [N] scalar target.
-        """
+        """Return P(DR>0): sigmoid of logits[0] for CORN, or 1 - P(grade 0) for CE."""
         if self.head == "corn":
             return torch.sigmoid(model_output[..., 0])
         elif self.head == "ce":
@@ -67,27 +42,15 @@ class ProbDrTarget:
 
 
 class ArgmaxTarget:
-    """Grad-CAM target: argmax class probability."""
+    """Grad-CAM target using the highest predicted class probability."""
 
     def __init__(self, head: str, predictions: np.ndarray | None = None):
-        """Initialize target.
-
-        Args:
-            head: 'corn' or 'ce'.
-            predictions: [N] predicted grades (optional, used for alignment).
-        """
+        """Store head type; predictions arg is unused but kept for compatibility."""
         self.head = head
         self.predictions = predictions
 
     def __call__(self, model_output: Tensor) -> Tensor:
-        """Compute argmax class probability as target.
-
-        Args:
-            model_output: [N, out_dim] logits.
-
-        Returns:
-            [N] scalar target.
-        """
+        """Return expected grade (CORN) or max probability (CE)."""
         if self.head == "corn":
             target = CornExpectedGradeTarget()
             return target(model_output)
@@ -100,16 +63,7 @@ class ArgmaxTarget:
 
 
 def build_cam(model: DRModel, backbone_name: str, method: str = "gradcam") -> GradCAM:
-    """Build GradCAM for the model.
-
-    Args:
-        model: DRModel instance.
-        backbone_name: Name of the backbone (used to find target layer).
-        method: CAM method ('gradcam' or 'gradcam++').
-
-    Returns:
-        GradCAM instance.
-    """
+    """Initialise GradCAM by selecting the target layer from the backbone."""
     from drstage.models.backbone import cam_target_layer
 
     target_layer = cam_target_layer(model.backbone, backbone_name)
@@ -120,18 +74,7 @@ def build_cam(model: DRModel, backbone_name: str, method: str = "gradcam") -> Gr
 def cam_for_batch(
     cam: GradCAM, x: Tensor, target: str, head: str, preds: np.ndarray | None = None
 ) -> np.ndarray:
-    """Generate Grad-CAM heatmaps for a batch.
-
-    Args:
-        cam: GradCAM instance.
-        x: [N, 3, H, W] images.
-        target: 'expected_grade', 'prob_dr', or 'argmax'.
-        head: 'corn' or 'ce'.
-        preds: [N] predicted grades (for argmax alignment).
-
-    Returns:
-        [N, H, W] heatmaps in [0, 1].
-    """
+    """Compute Grad-CAM heatmaps by backpropagating the target through the model."""
     if target == "expected_grade":
         if head != "corn":
             raise ValueError("expected_grade target only for CORN head")
@@ -148,16 +91,7 @@ def cam_for_batch(
 
 
 def select_examples(pred, per_grade: int, seed: int = 0):
-    """Select examples for visualization: per_grade correct + incorrect.
-
-    Args:
-        pred: Predictions object.
-        per_grade: Number of correct and incorrect per grade.
-        seed: Random seed.
-
-    Returns:
-        DataFrame with selected indices.
-    """
+    """Choose representative examples: the most confident correct and incorrect per grade."""
     import pandas as pd
 
     rng = np.random.default_rng(seed)

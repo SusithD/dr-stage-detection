@@ -1,3 +1,7 @@
+/**
+ * A4 referral report. It stays hidden on screen and only appears when the page is printed
+ * (Print report button or Ctrl+P).
+ */
 import { asGrade, finalGrade, GRADES, visitOutcome } from '../grades'
 import type { EyeCase, EyeSide, HealthResponse } from '../types'
 
@@ -7,7 +11,6 @@ interface PrintReportProps {
   health: HealthResponse | null
 }
 
-/** Paper layout of the visit, shown only when printing. */
 export function PrintReport({ patientRef, eyes, health }: PrintReportProps) {
   const list = [eyes.right, eyes.left].filter((e): e is EyeCase => e !== null)
   const outcome = visitOutcome(list)

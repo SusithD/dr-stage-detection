@@ -1,8 +1,8 @@
-"""Heuristic fundus image quality check: exposure, contrast, sharpness and field of view.
+"""Screen fundus images for exposure, contrast, focus and field coverage.
 
-Thresholds are the 1st (fail) and 5th (warn) percentiles of each measure over 1,200 DDR training
-images, so a "fail" means the photograph is less usable than 99% of the images the model learned
-from. This is a transparent screen, not a trained gradability model.
+Thresholds are the 1st and 5th percentiles of each measure over the training set,
+so "fail" means worse than 99% of the training images and "warn" means worse than 95%.
+This is a heuristic screen, not a learned gradability model.
 """
 
 from dataclasses import dataclass
@@ -25,7 +25,7 @@ FIELD_LOW = (0.60, 0.69)
 
 @dataclass
 class QualityCheck:
-    """Outcome of one quality measure."""
+    """One quality check: its status (ok/warn/fail), measured value and explanation."""
 
     key: str
     label: str
@@ -35,7 +35,7 @@ class QualityCheck:
 
 
 def _grade(value: float, fail_below: float, warn_below: float) -> str:
-    """Map a measured value to ok, warn or fail using the two thresholds."""
+    """Classify a measurement as ok, warn or fail."""
     if value < fail_below:
         return "fail"
     if value < warn_below:
@@ -44,14 +44,7 @@ def _grade(value: float, fail_below: float, warn_below: float) -> str:
 
 
 def assess_quality(image_rgb: np.ndarray) -> list[QualityCheck]:
-    """Measure exposure, contrast, sharpness and retinal field coverage of a fundus photograph.
-
-    Args:
-        image_rgb: RGB uint8 photograph.
-
-    Returns:
-        One QualityCheck per measure, each with status "ok", "warn" or "fail".
-    """
+    """Measure brightness, contrast, focus and field coverage."""
     crop = circle_crop(image_rgb, threshold=MASK_THRESHOLD, min_radius_frac=0.25)
     img = resize_square(crop.image, ANALYSIS_SIZE)
     mask, _ = estimate_fundus_mask(img, MASK_THRESHOLD)
@@ -129,5 +122,5 @@ def assess_quality(image_rgb: np.ndarray) -> list[QualityCheck]:
 
 
 def is_gradable(checks: list[QualityCheck]) -> bool:
-    """A photograph is gradable when no check fails."""
+    """True if none of the quality checks failed."""
     return all(c.status != "fail" for c in checks)

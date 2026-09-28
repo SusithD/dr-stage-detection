@@ -1,4 +1,4 @@
-"""Evaluation metrics for DR stage detection."""
+"""Metrics for evaluating DR stage predictions."""
 
 import logging
 from collections.abc import Sequence
@@ -17,17 +17,10 @@ logger = logging.getLogger(__name__)
 
 
 def quadratic_weighted_kappa(y_true: np.ndarray, y_pred: np.ndarray, num_classes: int = 5) -> float:
-    """Compute quadratic weighted kappa (Cohen's kappa with quadratic weights).
+    """Compute quadratic weighted kappa with a penalty for off-by-one errors.
 
-    Returns 0.0 if predictions are constant.
-
-    Args:
-        y_true: [N] true labels.
-        y_pred: [N] predicted labels.
-        num_classes: Number of classes.
-
-    Returns:
-        QWK score in [-1, 1].
+    Returns 0.0 if predictions are constant; this handles the case where
+    no variation in predictions can otherwise cause sklearn to fail.
     """
     if len(np.unique(y_pred)) == 1:
         logger.warning("Predictions are constant; returning QWK=0.0")
@@ -44,17 +37,10 @@ def compute_metrics(
     prob_dr: np.ndarray,
     class_names: Sequence[str],
 ) -> dict:
-    """Compute comprehensive multiclass, binary, and referable metrics.
+    """Compute accuracy, F1, confusion matrix and ROC metrics across three views of the data.
 
-    Args:
-        y_true: [N] true class labels (0..4).
-        y_pred: [N] predicted class labels.
-        class_probs: [N, 5] per-class probabilities (must sum to 1).
-        prob_dr: [N] probability of any DR (referable; score for binary).
-        class_names: Sequence of 5 class names.
-
-    Returns:
-        Dict with keys 'multiclass', 'binary', 'referable', 'n'.
+    Computes multiclass metrics (5-class), binary DR (any vs none), and referable-DR
+    thresholds (grade 2+ vs not), each with their own confusion matrix and ROC curve.
     """
     num_classes = 5
     n = len(y_true)

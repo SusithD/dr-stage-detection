@@ -11,7 +11,7 @@ from drstage.utils.io import ensure_dir
 
 @dataclass
 class CropResult:
-    """Result of circle crop operation."""
+    """Cropped image with bounding box and fallback flag."""
 
     image: np.ndarray
     bbox: tuple[int, int, int, int]
@@ -19,7 +19,7 @@ class CropResult:
 
 
 def load_rgb(path: Path) -> np.ndarray:
-    """Load image and convert BGR to RGB."""
+    """Load image as RGB, converting from BGR (OpenCV format)."""
     if not Path(path).exists():
         raise FileNotFoundError(path)
     img = cv2.imread(str(path))
@@ -41,7 +41,8 @@ def save_rgb(img: np.ndarray, path: Path, fmt: str = "png", jpeg_quality: int = 
 def estimate_fundus_mask(
     img: np.ndarray, threshold: int
 ) -> tuple[np.ndarray, tuple[int, int, int]]:
-    """Estimate fundus mask by thresholding max channel and finding largest component."""
+    """Find the fundus disc by thresholding the brightest channel and extracting the
+    largest connected component."""
     binary = (img.max(axis=2) > threshold).astype(np.uint8)
     n_labels, labels, stats, _ = cv2.connectedComponentsWithStats(binary, connectivity=8)
     if n_labels <= 1:
@@ -54,7 +55,8 @@ def estimate_fundus_mask(
 
 
 def circle_crop(img: np.ndarray, threshold: int = 10, min_radius_frac: float = 0.25) -> CropResult:
-    """Crop to fundus disc, pad to square with black border."""
+    """Crop the retina out of the black border and pad it to a square. Falls back to
+    center crop if the detected disc is too small."""
     h, w = img.shape[:2]
     mask, (cx, cy, r) = estimate_fundus_mask(img, threshold)
 
@@ -94,7 +96,8 @@ def circle_crop(img: np.ndarray, threshold: int = 10, min_radius_frac: float = 0
 
 
 def resize_square(img: np.ndarray, size: int) -> np.ndarray:
-    """Resize image to square, using INTER_AREA when shrinking, INTER_CUBIC when enlarging."""
+    """Resize to a square. Uses INTER_AREA for downsampling and INTER_CUBIC for
+    upsampling to maintain quality."""
     h, w = img.shape[:2]
     if (h, w) == (size, size):
         return img
@@ -104,7 +107,7 @@ def resize_square(img: np.ndarray, size: int) -> np.ndarray:
 
 
 def circular_mask(size: int, radius_frac: float) -> np.ndarray:
-    """Create a circular boolean mask centered at the image."""
+    """Create a circular mask to isolate the fundus region."""
     y, x = np.ogrid[:size, :size]
     cx, cy = size // 2, size // 2
     radius = int(size * radius_frac / 2)
@@ -120,7 +123,8 @@ def ben_graham(
     gamma: float = 128,
     mask_radius_frac: float = 0.92,
 ) -> np.ndarray:
-    """Apply Ben Graham preprocessing: weighted Gaussian blur + circular mask."""
+    """Enhance the fundus with weighted Gaussian blur and apply a circular mask. Helps
+    bring out vessel structure and reduces the effect of vignetting."""
     blur = cv2.GaussianBlur(img.astype(np.float32), (0, 0), sigma)
     result = cv2.addWeighted(img.astype(np.float32), alpha, blur, beta, gamma)
     result = np.clip(result, 0, 255).astype(np.uint8)
@@ -132,7 +136,8 @@ def ben_graham(
 
 
 def clahe_l(img: np.ndarray, clip_limit: float = 2.0, tile_grid: int = 8) -> np.ndarray:
-    """Apply CLAHE to L channel in LAB color space."""
+    """Boost local contrast via CLAHE on the L channel in LAB space. Highlights vessel
+    networks and microaneurysms."""
     lab = cv2.cvtColor(img, cv2.COLOR_RGB2LAB)
     l_channel = lab[..., 0]
 
@@ -146,7 +151,8 @@ def clahe_l(img: np.ndarray, clip_limit: float = 2.0, tile_grid: int = 8) -> np.
 
 
 def preprocess_image(img: np.ndarray, method: str, size: int, cfg: dict) -> tuple[np.ndarray, bool]:
-    """Preprocess image: circle crop, resize, apply method."""
+    """Apply the full preprocessing pipeline: circle crop, resize, and enhancement.
+    Returns the processed image and a flag indicating whether the fallback crop was used."""
     circle_crop_result = circle_crop(img, **cfg["circle_crop"])
     cropped_img = circle_crop_result.image
     fallback_used = circle_crop_result.fallback_used

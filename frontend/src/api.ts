@@ -1,3 +1,6 @@
+/**
+ * Small wrapper around the backend API. Errors come back as readable messages for the UI.
+ */
 import type { HealthResponse, PredictResponse, Sample } from './types'
 
 const API_BASE = '/api'
@@ -5,6 +8,7 @@ const API_BASE = '/api'
 export const SERVER_UNREACHABLE =
   "Can't reach the RetinaScan server. Start it with: uv run python -m drstage.cli.serve"
 
+/** Fetch JSON from the API and extract server error detail if the response fails. */
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let response: Response
   try {
@@ -20,6 +24,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return response.json() as Promise<T>
 }
 
+/** Endpoint functions: health, samples gallery, model prediction, and image blob fetch. */
 export const api = {
   health: () => request<HealthResponse>('/health'),
   samples: () => request<Sample[]>('/samples'),

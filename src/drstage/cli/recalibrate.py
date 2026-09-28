@@ -1,8 +1,7 @@
-"""Site recalibration of decision thresholds on an external dataset.
+"""Adjust decision thresholds on an external dataset to meet a target sensitivity.
 
-Simulates deploying at a new clinic: a small stratified calibration subset of the external set
-is used to choose DR and referable-DR thresholds that restore a target sensitivity, and the
-effect is measured on the remaining, untouched images.
+Splits the external set into calibration and evaluation subsets; uses the calibration set
+to find thresholds that match the reference sensitivity, then measures performance on eval.
 """
 
 import argparse
@@ -31,7 +30,7 @@ TASKS = {
 
 
 def operating_point(y: np.ndarray, score: np.ndarray, threshold: float) -> dict:
-    """Sensitivity and specificity of ``score >= threshold``."""
+    """Compute sensitivity and specificity at this threshold."""
     pred = score >= threshold
     pos, neg = y.sum(), (~y).sum()
     return {
@@ -42,14 +41,14 @@ def operating_point(y: np.ndarray, score: np.ndarray, threshold: float) -> dict:
 
 
 def threshold_for_sensitivity(y: np.ndarray, score: np.ndarray, target: float) -> float:
-    """Highest threshold whose sensitivity on (y, score) is at least ``target``."""
+    """Find the highest threshold that achieves at least the target sensitivity."""
     positives = np.sort(score[y])[::-1]
     k = int(np.ceil(target * len(positives))) - 1
     return float(positives[max(k, 0)])
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Recalibrate thresholds on part of an external set and report the effect on the rest."""
+    """Recalibrate thresholds and plot ROC curves before and after recalibration."""
     parser = argparse.ArgumentParser(description="Recalibrate thresholds on an external set")
     parser.add_argument("--predictions", required=True, help="external predictions.csv")
     parser.add_argument("--reference", required=True, help="in-domain test predictions.csv")

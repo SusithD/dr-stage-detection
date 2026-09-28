@@ -1,3 +1,7 @@
+/**
+ * Right sidebar: visit-level screening recommendation (based on worse eye),
+ * per-eye grade table, image quality checks, and clinician review UI.
+ */
 import { useState } from 'react'
 import {
   asGrade,
@@ -180,6 +184,7 @@ function EyeFindings({ eye, onReview }: { eye: EyeCase; onReview: (r: ClinicianR
   )
 }
 
+/** Probability of each grade, drawn worst grade first so it reads like a severity scale. */
 function Ladder({ probs, grade, muted }: { probs: number[]; grade: Grade; muted: boolean }) {
   return (
     <ol className="ladder" data-muted={muted || undefined} aria-label="Probability of each grade">
@@ -206,6 +211,7 @@ function Ladder({ probs, grade, muted }: { probs: number[]; grade: Grade; muted:
   )
 }
 
+/** Clinician review: confirm model grade or change it with a reason. */
 function Review({
   eye,
   modelGrade,
