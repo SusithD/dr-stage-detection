@@ -110,6 +110,7 @@ class EarlyStopping:
         self.should_stop = False
 
     def _better(self, value: float, than: float, margin: float) -> bool:
+        """True when value beats the reference by more than the margin."""
         return value > than + margin if self.mode == "max" else value < than - margin
 
     def step(self, value: float) -> bool:

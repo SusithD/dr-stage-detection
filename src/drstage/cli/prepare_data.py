@@ -46,32 +46,40 @@ class Paths:
     """Locations of every artefact produced by the pipeline."""
 
     def __init__(self, root: Path):
+        """Remember the root folder all artefacts are written under."""
         self.root = root
         self.reports = root / "reports"
         self.splits = root / "splits"
 
     def manifest(self, ds: str) -> Path:
+        """Manifest CSV for a dataset."""
         return self.root / "manifests" / f"{ds}_raw.csv"
 
     def hashes(self, ds: str) -> Path:
+        """Perceptual-hash CSV for a dataset."""
         return self.root / "hashes" / f"{ds}_phash.csv"
 
     def kept(self, ds: str) -> Path:
+        """Images kept after de-duplication."""
         return self.root / "dedup" / f"{ds}_kept.csv"
 
     def dropped(self, ds: str) -> Path:
+        """Images dropped by de-duplication, with the reason."""
         return self.root / "dedup" / f"{ds}_dropped.csv"
 
     @property
     def ddr_split(self) -> Path:
+        """DDR train/val/test split CSV."""
         return self.splits / "ddr_split.csv"
 
     @property
     def aptos_test(self) -> Path:
+        """Cleaned APTOS external test CSV."""
         return self.splits / "aptos_test.csv"
 
     @property
     def dedup_report(self) -> Path:
+        """JSON summary of the duplicate audit."""
         return self.reports / "dedup_report.json"
 
 
@@ -87,6 +95,7 @@ def available_datasets(cfg: dict, requested: list[str]) -> list[str]:
 
 
 def stage_manifest(cfg: dict, paths: Paths, datasets: list[str], overwrite: bool) -> None:
+    """Build the manifest of labelled images for each dataset."""
     for ds in datasets:
         if paths.manifest(ds).exists() and not overwrite:
             logger.info(f"{ds}: manifest exists, skipping")
@@ -97,6 +106,7 @@ def stage_manifest(cfg: dict, paths: Paths, datasets: list[str], overwrite: bool
 
 
 def stage_hash(cfg: dict, paths: Paths, datasets: list[str], overwrite: bool) -> None:
+    """Compute a perceptual hash for every image in each manifest."""
     for ds in datasets:
         if paths.hashes(ds).exists() and not overwrite:
             logger.info(f"{ds}: hashes exist, skipping")
@@ -121,6 +131,7 @@ def _dedup_dataset(cfg: dict, paths: Paths, ds: str) -> tuple[pd.DataFrame, pd.D
 
 
 def stage_dedup(cfg: dict, paths: Paths, datasets: list[str]) -> None:
+    """Drop near-duplicate and conflicting images, and APTOS images that overlap DDR."""
     report: dict = {}
     for ds in datasets:
         kept, dropped, summary = _dedup_dataset(cfg, paths, ds)
@@ -179,6 +190,7 @@ def stage_split(cfg: dict, paths: Paths, datasets: list[str]) -> bool:
 def stage_cache(
     cfg: dict, paths: Paths, datasets: list[str], methods: list[str], overwrite: bool
 ) -> None:
+    """Preprocess and cache images for each requested method."""
     sources = {"ddr": paths.ddr_split, "aptos": paths.aptos_test}
     for ds in datasets:
         frame = pd.read_csv(sources[ds])
@@ -200,6 +212,7 @@ def stage_cache(
 
 
 def stage_report(cfg: dict, paths: Paths, datasets: list[str]) -> None:
+    """Write the data-audit figures used in the report."""
     frames = {ds: pd.read_csv(paths.manifest(ds)) for ds in datasets}
     plot_class_distribution(
         {ds.upper(): f for ds, f in frames.items()}, paths.reports / "fig_class_distribution.png"
@@ -229,6 +242,7 @@ def stage_report(cfg: dict, paths: Paths, datasets: list[str]) -> None:
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    """Command-line options for the data pipeline."""
     parser = argparse.ArgumentParser(description="Prepare DDR and APTOS data for DR grading")
     parser.add_argument("--config", default="configs/data.yaml")
     parser.add_argument("--stage", default="all", choices=("all",) + STAGES)
@@ -240,6 +254,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Run the requested data-preparation stages in order."""
     args = parse_args(argv)
     cfg = load_config(args.config, args.overrides)
     seed_everything(cfg["seed"], deterministic=False)

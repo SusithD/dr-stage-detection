@@ -121,6 +121,7 @@ def report(
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Evaluate every configured model and ensemble on every configured dataset."""
     parser = argparse.ArgumentParser(description="Evaluate DR models and ensembles")
     parser.add_argument("--config", required=True, help="evaluation config YAML")
     parser.add_argument("-o", dest="overrides", action="append", default=[], help="key=value")

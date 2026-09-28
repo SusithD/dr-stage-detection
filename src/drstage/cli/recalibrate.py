@@ -49,6 +49,7 @@ def threshold_for_sensitivity(y: np.ndarray, score: np.ndarray, target: float) -
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Recalibrate thresholds on part of an external set and report the effect on the rest."""
     parser = argparse.ArgumentParser(description="Recalibrate thresholds on an external set")
     parser.add_argument("--predictions", required=True, help="external predictions.csv")
     parser.add_argument("--reference", required=True, help="in-domain test predictions.csv")
@@ -74,6 +75,7 @@ def main(argv: list[str] | None = None) -> int:
     for ax, (task, spec) in zip(axes, TASKS.items(), strict=True):
 
         def arrays(frame: pd.DataFrame, spec: dict = spec) -> tuple[np.ndarray, np.ndarray]:
+            """Binary labels and summed task probability for one prediction table."""
             labels = spec["label"](frame["label"].to_numpy())
             return labels, frame[spec["score"]].sum(axis=1).to_numpy()
 

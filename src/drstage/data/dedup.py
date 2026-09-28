@@ -125,6 +125,7 @@ class UnionFind:
     """Disjoint-set forest with path compression, used to merge duplicate pairs into groups."""
 
     def __init__(self, n: int):
+        """Start with every element in its own set."""
         self.parent = list(range(n))
 
     def find(self, x: int) -> int:

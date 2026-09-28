@@ -10,6 +10,7 @@ from drstage.utils.logging import get_logger
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    """Command-line options for the web server."""
     parser = argparse.ArgumentParser(description="Serve the RetinaScan DR screening web app")
     parser.add_argument("--checkpoint", default=None, help="trained checkpoint; omit for demo mode")
     parser.add_argument("--host", default="127.0.0.1")
@@ -19,6 +20,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Start the RetinaScan API and frontend with uvicorn."""
     args = parse_args(argv)
     if args.checkpoint:
         os.environ["DRSTAGE_CHECKPOINT"] = args.checkpoint

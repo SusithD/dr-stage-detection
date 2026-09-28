@@ -49,6 +49,7 @@ def build_scheduler(
     """
 
     def lr_lambda(step: int) -> float:
+        """Learning-rate multiplier for an optimiser step: linear warm-up then cosine decay."""
         if step < warmup_steps:
             return step / warmup_steps
         if total_steps <= warmup_steps:

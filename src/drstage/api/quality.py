@@ -35,6 +35,7 @@ class QualityCheck:
 
 
 def _grade(value: float, fail_below: float, warn_below: float) -> str:
+    """Map a measured value to ok, warn or fail using the two thresholds."""
     if value < fail_below:
         return "fail"
     if value < warn_below:

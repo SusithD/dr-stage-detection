@@ -58,6 +58,7 @@ def select_samples(split_csv: Path) -> pd.DataFrame:
 
 
 def _sample_path(state: AppState, sample_id: str) -> Path:
+    """Resolve a gallery sample id to its image file, or raise a 404 with a clear message."""
     if sample_id not in state.samples.index:
         raise HTTPException(status.HTTP_404_NOT_FOUND, f"No sample with id '{sample_id}'.")
     path = Path(state.samples.at[sample_id, "path"])
@@ -91,6 +92,7 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(_: FastAPI):
+        """Load the predictor once at start-up (the demo predictor if no checkpoint is set)."""
         if state.predictor is None:
             state.predictor = load_predictor(
                 os.getenv("DRSTAGE_CHECKPOINT"), os.getenv("DRSTAGE_DEVICE", "auto")
@@ -111,6 +113,7 @@ def create_app(
 
     @app.get("/api/health", response_model=HealthResponse)
     async def health() -> HealthResponse:
+        """Report whether a trained model is loaded, which one, and on which device."""
         info = state.predictor.info()
         return HealthResponse(
             status="ok",
@@ -121,6 +124,7 @@ def create_app(
 
     @app.post("/api/predict", response_model=PredictResponse)
     async def predict(file: UploadFile) -> PredictResponse:
+        """Grade one uploaded photograph: grades, probabilities, images and quality checks."""
         data = await file.read()
         if len(data) > MAX_UPLOAD_BYTES:
             raise HTTPException(
@@ -168,6 +172,7 @@ def create_app(
 
     @app.get("/api/samples", response_model=list[Sample])
     async def samples() -> list[Sample]:
+        """List the fixed gallery of held-out test photographs with their reference grades."""
         return [
             Sample(
                 id=sid,
@@ -180,15 +185,18 @@ def create_app(
 
     @app.get("/api/samples/{sample_id}/thumbnail")
     async def sample_thumbnail(sample_id: str) -> Response:
+        """Return a 256 px circle-cropped JPEG thumbnail of a gallery photograph."""
         jpeg = await run_in_threadpool(thumbnail_jpeg, _sample_path(state, sample_id), 256)
         return Response(jpeg, media_type="image/jpeg")
 
     @app.get("/api/samples/{sample_id}/image")
     async def sample_image(sample_id: str) -> FileResponse:
+        """Return the original file of a gallery photograph so the UI can analyse it."""
         return FileResponse(_sample_path(state, sample_id))
 
     @app.get("/{path:path}", include_in_schema=False)
     async def frontend(path: str) -> FileResponse:
+        """Serve the built app with an index.html fallback, refusing paths outside it."""
         if path.startswith("api/") or not (frontend_dist / "index.html").exists():
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found.")
         root = frontend_dist.resolve()

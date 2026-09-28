@@ -144,12 +144,15 @@ def load_predictor(checkpoint: str | None, device: str = "auto") -> Predictor:
         demo = False
 
         def __init__(self, inner):
+            """Wrap a trained predictor from drstage.inference."""
             self.inner = inner
 
         def info(self) -> dict:
+            """Model metadata shown in the UI."""
             return self.inner.info()
 
         def predict(self, image_rgb: np.ndarray) -> Prediction:
+            """Run the trained model and convert its output dictionary to a Prediction."""
             result = self.inner.predict(image_rgb)
             return Prediction(
                 grade=result["grade"],

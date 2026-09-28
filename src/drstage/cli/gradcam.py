@@ -62,6 +62,7 @@ def plot_pairs(items: list[dict], out: Path, title: str) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Write Grad-CAM figures and overlays for the selected test examples."""
     parser = argparse.ArgumentParser(description="Grad-CAM figures for correct and incorrect cases")
     parser.add_argument("--checkpoint", required=True, help="checkpoint file or run directory")
     parser.add_argument("--predictions", required=True, help="predictions.csv from evaluate")
