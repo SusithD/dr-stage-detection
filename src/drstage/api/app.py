@@ -14,10 +14,24 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response
 from starlette.concurrency import run_in_threadpool
 
-from drstage.api.imaging import decode_upload, heatmap_to_rgba, thumbnail_jpeg, to_png_data_url
+from drstage.api.assistant import (
+    Assistant,
+    AssistantError,
+    load_assistant,
+)
+from drstage.api.imaging import (
+    decode_upload,
+    heatmap_to_rgba,
+    summarise_attention,
+    thumbnail_jpeg,
+    to_png_data_url,
+)
 from drstage.api.predictors import Predictor, load_predictor
 from drstage.api.quality import assess_quality, is_gradable
 from drstage.api.schemas import (
+    AssistantRequest,
+    AssistantResponse,
+    Attention,
     HealthResponse,
     ModelInfo,
     PredictImages,
@@ -42,6 +56,7 @@ class AppState:
     predictor: Predictor | None
     samples: pd.DataFrame = field(default_factory=pd.DataFrame)
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+    assistant: Assistant | None = None
 
 
 def select_samples(split_csv: Path) -> pd.DataFrame:
@@ -73,13 +88,14 @@ def create_app(
     predictor: Predictor | None = None,
     split_csv: Path | None = None,
     frontend_dist: Path | None = None,
+    assistant: Assistant | None = None,
 ) -> FastAPI:
     """Wire up the prediction API, sample endpoints and frontend asset serving."""
     split_csv = split_csv or Path(
         os.getenv("DRSTAGE_SPLIT_CSV", "data/processed/splits/ddr_split.csv")
     )
     frontend_dist = frontend_dist or Path(os.getenv("DRSTAGE_FRONTEND_DIST", "frontend/dist"))
-    state = AppState(predictor=predictor, samples=select_samples(split_csv))
+    state = AppState(predictor=predictor, samples=select_samples(split_csv), assistant=assistant)
 
     @asynccontextmanager
     async def lifespan(_: FastAPI):
@@ -90,6 +106,8 @@ def create_app(
                 os.getenv("DRSTAGE_DEVICE", "auto"),
                 tta=os.getenv("DRSTAGE_TTA", "1") != "0",
             )
+        if state.assistant is None:
+            state.assistant = load_assistant()
         mode = "demo" if state.predictor.demo else "model"
         logger.info(f"RetinaScan ready ({mode} mode, {len(state.samples)} samples)")
         yield
@@ -113,6 +131,7 @@ def create_app(
             demo=state.predictor.demo,
             device=info.get("device", "cpu") if info else "cpu",
             model=ModelInfo(**{k: info[k] for k in ModelInfo.model_fields}) if info else None,
+            assistant=state.assistant is not None,
         )
 
     @app.post("/api/predict", response_model=PredictResponse)
@@ -143,6 +162,7 @@ def create_app(
         elapsed_ms = (time.perf_counter() - start) * 1000
         logger.info(f"predict {file.filename!r}: grade {pred.grade} in {elapsed_ms:.0f} ms")
 
+        region, spread = summarise_attention(pred.heatmap)
         return PredictResponse(
             demo=state.predictor.demo,
             grade=pred.grade,
@@ -160,8 +180,22 @@ def create_app(
                 gradable=is_gradable(checks),
                 checks=[QualityCheckOut(**vars(c)) for c in checks],
             ),
+            attention=Attention(region=region, spread=spread),
             inference_ms=round(elapsed_ms, 1),
         )
+
+    @app.post("/api/assistant", response_model=AssistantResponse)
+    async def assistant_reply(req: AssistantRequest) -> AssistantResponse:
+        """Answer a question about the current visit with the tool-using screening assistant."""
+        if state.assistant is None:
+            raise HTTPException(
+                status.HTTP_503_SERVICE_UNAVAILABLE,
+                "The assistant is not set up. Start the server with GROQ_API_KEY set.",
+            )
+        try:
+            return await state.assistant.reply(req.messages, req.visit)
+        except AssistantError as e:
+            raise HTTPException(status.HTTP_502_BAD_GATEWAY, str(e)) from e
 
     @app.get("/api/samples", response_model=list[Sample])
     async def samples() -> list[Sample]:

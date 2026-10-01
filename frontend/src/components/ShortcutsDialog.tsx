@@ -12,6 +12,7 @@ const SHORTCUTS: [string, string][] = [
   ['[  ]', 'Heatmap opacity down and up'],
   ['R  E', 'Select the right or left eye'],
   ['← →', 'Move the comparison divider (viewer focused)'],
+  ['A', 'Open or close the screening assistant'],
   ['?', 'Show this list'],
 ]
 

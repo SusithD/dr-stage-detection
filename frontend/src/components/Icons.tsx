@@ -87,3 +87,10 @@ export const CloseIcon = ({ className }: IconProps) => (
     <path d="M5 5l10 10M15 5L5 15" />
   </svg>
 )
+
+export const AssistantIcon = ({ className }: IconProps) => (
+  <svg {...base} className={className}>
+    <path d="M10 1.5C5.3 1.5 1.5 5.3 1.5 10s3.8 8.5 8.5 8.5 8.5-3.8 8.5-8.5-3.8-8.5-8.5-8.5z" />
+    <path d="M10 5v6M7 8h6" />
+  </svg>
+)

@@ -1,7 +1,7 @@
 /**
  * Small wrapper around the backend API. Errors come back as readable messages for the UI.
  */
-import type { HealthResponse, PredictResponse, Sample } from './types'
+import type { AssistantMessage, AssistantReply, HealthResponse, PredictResponse, Sample, VisitContext } from './types'
 
 const API_BASE = '/api'
 
@@ -24,7 +24,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return response.json() as Promise<T>
 }
 
-/** Endpoint functions: health, samples gallery, model prediction, and image blob fetch. */
+/** Endpoint functions: health, samples gallery, model prediction, image blob fetch, and assistant. */
 export const api = {
   health: () => request<HealthResponse>('/health'),
   samples: () => request<Sample[]>('/samples'),
@@ -38,4 +38,10 @@ export const api = {
     if (!response.ok) throw new Error('This sample image could not be loaded. Choose another.')
     return response.blob()
   },
+  assistant: (messages: AssistantMessage[], visit: VisitContext) =>
+    request<AssistantReply>('/assistant', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messages, visit }),
+    }),
 }

@@ -1,8 +1,8 @@
 /**
- * Top app bar: brand and model info, theme toggle, print, and shortcuts button.
+ * Top app bar: brand and model info, theme toggle, print, shortcuts, and assistant button.
  */
 import type { HealthResponse } from '../types'
-import { KeyboardIcon, MoonIcon, PrintIcon, SunIcon } from './Icons'
+import { AssistantIcon, KeyboardIcon, MoonIcon, PrintIcon, SunIcon } from './Icons'
 
 interface TopBarProps {
   health: HealthResponse | null
@@ -13,6 +13,9 @@ interface TopBarProps {
   onPrint: () => void
   canPrint: boolean
   onNewVisit: () => void
+  assistantOpen: boolean
+  onAssistant: () => void
+  assistantAvailable: boolean
 }
 
 export function TopBar({
@@ -24,6 +27,9 @@ export function TopBar({
   onPrint,
   canPrint,
   onNewVisit,
+  assistantOpen,
+  onAssistant,
+  assistantAvailable,
 }: TopBarProps) {
   const status = serverError
     ? { tone: 'fail', text: 'Server offline' }
@@ -58,6 +64,18 @@ export function TopBar({
           <PrintIcon />
           Print report
         </button>
+        {assistantAvailable && (
+          <button
+            type="button"
+            className="btn btn-quiet"
+            onClick={onAssistant}
+            aria-pressed={assistantOpen}
+            title="Screening assistant (A)"
+          >
+            <AssistantIcon />
+            Assistant
+          </button>
+        )}
         <button type="button" className="icon-btn" onClick={onShortcuts} title="Keyboard shortcuts (?)">
           <KeyboardIcon />
           <span className="visually-hidden">Keyboard shortcuts</span>

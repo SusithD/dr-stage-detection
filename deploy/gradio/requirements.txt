@@ -11,3 +11,4 @@ imagehash
 tqdm
 grad-cam==1.5.7
 python-multipart
+httpx

@@ -3,6 +3,7 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from './api'
+import { AssistantPanel } from './components/AssistantPanel'
 import { PrintReport } from './components/PrintReport'
 import { ReportPanel } from './components/ReportPanel'
 import { ShortcutsDialog } from './components/ShortcutsDialog'
@@ -46,6 +47,8 @@ export default function App() {
   const [loupe, setLoupe] = useState(false)
   const [theme, setTheme] = useState<Theme>(initialTheme)
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
+  const [assistantOpen, setAssistantOpen] = useState(false)
+  const [resetKey, setResetKey] = useState(0)
   const tokens = useRef<Record<EyeSide, number>>({ right: 0, left: 0 })
 
   useEffect(() => {
@@ -145,9 +148,10 @@ export default function App() {
     setPatientRef('')
     setActive('right')
     setView('original')
+    setResetKey((k) => k + 1)
   }
 
-  /** Top-level keyboard shortcuts: ? for help, R/E to switch eyes. */
+  /** Top-level keyboard shortcuts: ? for help, R/E to switch eyes, A for assistant. */
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement
@@ -156,10 +160,11 @@ export default function App() {
       if (event.key === '?') setShortcutsOpen(true)
       else if (event.key.toLowerCase() === 'r') setActive('right')
       else if (event.key.toLowerCase() === 'e') setActive('left')
+      else if (event.key.toLowerCase() === 'a' && health?.assistant) setAssistantOpen((x) => !x)
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [])
+  }, [health?.assistant])
 
   const anyDone = Boolean(eyes.right?.result || eyes.left?.result)
   const busy = eyes.right?.status === 'analysing' || eyes.left?.status === 'analysing'
@@ -176,6 +181,9 @@ export default function App() {
           onPrint={() => window.print()}
           canPrint={anyDone}
           onNewVisit={newVisit}
+          assistantOpen={assistantOpen}
+          onAssistant={() => setAssistantOpen((x) => !x)}
+          assistantAvailable={health?.assistant ?? false}
         />
         {serverError && (
           <p className="banner banner-fail" role="alert">
@@ -220,6 +228,9 @@ export default function App() {
             onReview={(side, review: ClinicianReview | null) => patch(side, { review })}
             health={health}
           />
+          {health?.assistant && (
+            <AssistantPanel key={resetKey} open={assistantOpen} onClose={() => setAssistantOpen(false)} eyes={eyes} />
+          )}
         </main>
       </div>
       <PrintReport patientRef={patientRef} eyes={eyes} health={health} />
