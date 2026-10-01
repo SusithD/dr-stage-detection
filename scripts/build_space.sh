@@ -46,3 +46,11 @@ print(f"model {(out / 'model/best_fp16.pt').stat().st_size / 1e6:.0f} MB, {len(r
 PY
 
 du -sh "$OUT"
+
+# Gradio-SDK flavour: a few top-level files the Hub web uploader can take, with the app zipped
+G=build/space_gradio
+rm -rf "$G" && mkdir -p "$G"
+cp deploy/gradio/app.py deploy/gradio/requirements.txt deploy/gradio/packages.txt deploy/gradio/README.md "$G/"
+cp "$OUT/model/best_fp16.pt" "$G/"
+(cd "$OUT" && zip -qr "../../$G/bundle.zip" src configs frontend samples -x '*/__pycache__/*')
+ls -lh "$G"

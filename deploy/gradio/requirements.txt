@@ -1,0 +1,13 @@
+torch
+torchvision
+timm==1.0.30
+albumentations==2.0.8
+opencv-python-headless
+scikit-learn
+matplotlib
+pandas
+pyyaml
+imagehash
+tqdm
+grad-cam==1.5.7
+python-multipart
