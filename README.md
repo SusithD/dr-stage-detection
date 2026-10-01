@@ -97,6 +97,14 @@ uv run python -m drstage.cli.serve --checkpoint runs/final_convnext_b_512_ce
 Open http://127.0.0.1:8000. Without `--checkpoint` the app runs in a clearly labelled demo mode.
 For frontend development run `npm run dev` in `frontend/` alongside the server.
 
+### Live deployment
+
+RetinaScan is hosted on Hugging Face Spaces at **https://susith-retinascan.hf.space**
+([Space page](https://huggingface.co/spaces/Susith/retinascan)). The Space serves the same
+FastAPI app and React build with half-precision weights on CPU (no TTA, about 2–3 s per
+photograph). `scripts/build_space.sh` assembles the upload: `build/space/` for a Docker Space
+(`deploy/Dockerfile`) and `build/space_gradio/` for a Gradio-runtime Space (`deploy/gradio/`).
+
 ## Development
 
 ```bash
