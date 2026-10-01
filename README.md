@@ -80,7 +80,6 @@ uv run python -m drstage.cli.recalibrate \
   --predictions runs/eval/final_models/ensemble_ce_corn/aptos_ext/tta/predictions.csv \
   --reference runs/eval/final_models/ensemble_ce_corn/ddr_test/tta/predictions.csv \
   --out runs/eval/recalibration/ensemble_ce_corn
-uv run python scripts/report_figures.py          # figures used in the report
 ```
 
 Evaluation reports accuracy, per-class precision/recall/F1, quadratic weighted kappa, confusion
