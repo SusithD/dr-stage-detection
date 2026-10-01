@@ -10,6 +10,7 @@ from drstage.data.preprocess import circle_crop, preprocess_image, resize_square
 from drstage.data.transforms import build_eval_transforms
 from drstage.evaluation.gradcam import ArgmaxTarget, CornExpectedGradeTarget, build_cam
 from drstage.evaluation.predict import flip_tta_logits_to_probs, grade_from_class_probs
+from drstage.models.backbone import cam_target_layer
 from drstage.models.factory import build_model
 from drstage.training.checkpoint import resolve_checkpoint
 
@@ -52,6 +53,10 @@ class Predictor:
 
         try:
             self.cam = build_cam(self.model, bundle["model"]["backbone"], method=cam_method)
+            # Only the CAM layer needs gradients, so backprop stops there instead of running
+            # back to the input; on a CPU this makes the heatmap about 3x faster.
+            self.model.requires_grad_(False)
+            cam_target_layer(self.model.backbone, bundle["model"]["backbone"]).requires_grad_(True)
         except Exception as e:
             logger.warning(f"Could not build CAM: {e}")
             self.cam = None
@@ -74,11 +79,7 @@ class Predictor:
         """Preprocess, infer and optionally generate a Grad-CAM heatmap for one image."""
         original, enhanced, x = self.preprocess(image_rgb)
 
-        with torch.inference_mode():
-            class_probs, prob_dr = flip_tta_logits_to_probs(self.model, x, self.tta)
-        grade = int(grade_from_class_probs(class_probs, self.head).item())
-
-        heatmap_array = None
+        heatmap_array, cam_logits = None, None
         if heatmap and self.cam is not None:
             try:
                 with torch.enable_grad():
@@ -87,8 +88,17 @@ class Predictor:
                     )
                     cam = self.cam(input_tensor=x.clone(), targets=[target])
                 heatmap_array = np.clip(cam[0], 0.0, 1.0).astype(np.float32)
+                cam_logits = self.cam.outputs.detach()
             except Exception:
                 logger.exception("Grad-CAM failed; returning the prediction without a heatmap")
+
+        if cam_logits is not None and not self.tta:
+            # without TTA the CAM forward pass already holds the logits we need
+            _, prob_dr, class_probs = self.model.predict(cam_logits)
+        else:
+            with torch.inference_mode():
+                class_probs, prob_dr = flip_tta_logits_to_probs(self.model, x, self.tta)
+        grade = int(grade_from_class_probs(class_probs, self.head).item())
 
         return {
             "grade": grade,

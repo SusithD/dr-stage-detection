@@ -92,8 +92,11 @@ class DemoPredictor:
         )
 
 
-def load_predictor(checkpoint: str | None, device: str = "auto") -> Predictor:
-    """Load a trained model from a checkpoint, or return the demo predictor if none is set."""
+def load_predictor(checkpoint: str | None, device: str = "auto", tta: bool = True) -> Predictor:
+    """Load a trained model from a checkpoint, or return the demo predictor if none is set.
+
+    tta=False skips the four-flip averaging, which is worth it on a slow CPU host.
+    """
     if checkpoint is None:
         return DemoPredictor()
 
@@ -106,7 +109,7 @@ def load_predictor(checkpoint: str | None, device: str = "auto") -> Predictor:
         ) from e
 
     try:
-        real_predictor = load_real(checkpoint, device)
+        real_predictor = load_real(checkpoint, device, tta=tta)
     except Exception as e:
         raise RuntimeError(
             f"Failed to load model from checkpoint: {checkpoint}. "

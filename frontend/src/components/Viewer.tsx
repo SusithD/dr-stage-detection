@@ -335,7 +335,7 @@ export function Viewer({
       <p className="viewer-hint">
         {ready
           ? 'Scroll to zoom, drag to pan, double-click to magnify. Press ? for all shortcuts.'
-          : 'Photographs are analysed on this computer and are not stored.'}
+          : 'Photographs are analysed on the server and are not stored.'}
       </p>
     </section>
   )

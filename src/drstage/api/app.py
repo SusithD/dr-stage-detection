@@ -86,7 +86,9 @@ def create_app(
         """Load the predictor once at start-up (the demo predictor if no checkpoint is set)."""
         if state.predictor is None:
             state.predictor = load_predictor(
-                os.getenv("DRSTAGE_CHECKPOINT"), os.getenv("DRSTAGE_DEVICE", "auto")
+                os.getenv("DRSTAGE_CHECKPOINT"),
+                os.getenv("DRSTAGE_DEVICE", "auto"),
+                tta=os.getenv("DRSTAGE_TTA", "1") != "0",
             )
         mode = "demo" if state.predictor.demo else "model"
         logger.info(f"RetinaScan ready ({mode} mode, {len(state.samples)} samples)")
