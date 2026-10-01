@@ -94,6 +94,8 @@ uv run python -m drstage.cli.serve --checkpoint runs/final_convnext_b_512_ce
 ```
 
 Open http://127.0.0.1:8000. Without `--checkpoint` the app runs in a clearly labelled demo mode.
+Set `GROQ_API_KEY` to enable the screening assistant, a tool-using LLM agent that explains the
+visit (model: `openai/gpt-oss-120b`, override with `DRSTAGE_ASSISTANT_MODEL`).
 For frontend development run `npm run dev` in `frontend/` alongside the server.
 
 ### Live deployment
